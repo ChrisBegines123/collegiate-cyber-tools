@@ -1,1 +1,4 @@
 .direnv
+windows/.direnv/
+linux/.direnv/
+freebsd/.direnv/
