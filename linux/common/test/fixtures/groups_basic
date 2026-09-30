@@ -1,0 +1,5 @@
+root:root
+alice:alice,sudo
+bob:bob
+carol:carol,wheel
+evil:evil

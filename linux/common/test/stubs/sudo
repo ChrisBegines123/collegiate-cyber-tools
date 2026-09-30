@@ -1,0 +1,13 @@
+#!/bin/sh
+# Test stub for sudo: "sudo -l -U NAME" allows NAME only if it is listed
+# (one name per line) in $FAKE_SUDOERS_FILE.
+if [ "$1" = "-l" ] && [ "$2" = "-U" ]; then
+    name="$3"
+    if [ -n "${FAKE_SUDOERS_FILE:-}" ] && grep -qx "$name" "$FAKE_SUDOERS_FILE" 2>/dev/null; then
+        echo "User $name may run the following commands on this host"
+        exit 0
+    fi
+    echo "User $name is not allowed to run sudo"
+    exit 1
+fi
+exit 1

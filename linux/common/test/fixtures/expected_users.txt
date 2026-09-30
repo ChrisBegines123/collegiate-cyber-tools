@@ -1,0 +1,5 @@
+# expected local accounts
+root
+alice
+bob
+dave

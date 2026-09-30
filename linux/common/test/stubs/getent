@@ -1,0 +1,8 @@
+#!/bin/sh
+# Test stub for getent: only implements "getent passwd", sourced from
+# $FAKE_PASSWD_FILE so tests never touch the real account database.
+if [ "$1" = "passwd" ] && [ -n "${FAKE_PASSWD_FILE:-}" ] && [ -r "$FAKE_PASSWD_FILE" ]; then
+    cat "$FAKE_PASSWD_FILE"
+    exit 0
+fi
+exit 1

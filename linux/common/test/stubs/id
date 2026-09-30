@@ -1,0 +1,17 @@
+#!/bin/sh
+# Test stub for id: "id -u" reports $FAKE_UID; "id -Gn NAME" looks up
+# NAME's groups from $FAKE_GROUPS_FILE (lines of "name:group,group,...").
+case "$1" in
+    -u)
+        echo "${FAKE_UID:-1000}"
+        ;;
+    -Gn)
+        name="$2"
+        if [ -n "${FAKE_GROUPS_FILE:-}" ] && [ -r "$FAKE_GROUPS_FILE" ]; then
+            awk -F: -v n="$name" '$1==n{print $2}' "$FAKE_GROUPS_FILE" | tr ',' ' '
+        fi
+        ;;
+    *)
+        exit 1
+        ;;
+esac
