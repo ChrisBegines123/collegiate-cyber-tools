@@ -58,6 +58,8 @@
     Scheduled Task (running as an account with the necessary AD rights) that
     runs, e.g.:
         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\ADReconciliation\Check-ADUsers.ps1" -UsersFile "C:\ADReconciliation\users.txt" -AdminsFile "C:\ADReconciliation\admins.txt"
+    Register-CheckADUsersTask.ps1 in this same directory automates creating
+    that Scheduled Task (default: every 5 minutes).
 
     Testing: this file can be dot-sourced (". .\Check-ADUsers.ps1") to load
     its functions without running anything -- see Check-ADUsers.Tests.ps1 for

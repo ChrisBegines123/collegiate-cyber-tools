@@ -1,0 +1,4 @@
+#!/bin/sh
+# Test stub for gpasswd: records the call instead of really touching groups.
+[ -n "${FAKE_ACTIONS_LOG:-}" ] && echo "gpasswd $*" >> "$FAKE_ACTIONS_LOG"
+exit 0

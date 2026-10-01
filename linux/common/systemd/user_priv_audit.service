@@ -1,0 +1,29 @@
+[Unit]
+Description=Local account privilege audit (user_priv_audit.sh)
+# Don't let a slow/hung run pile up if the timer fires again before it exits.
+ConditionPathExists=/opt/nccdc-tools/user_priv_audit.sh
+
+[Service]
+Type=oneshot
+
+# Must run as root: without it, sudoers lookups, /etc/shadow checks, and
+# every remediation action (passwd -l, usermod -e, pkill, gpasswd) are
+# skipped or incomplete.
+User=root
+
+# Adjust the script path and expected-users/privs files for your deployment.
+# Report-only (dry-run) by default. Add "-a" as its own line below, once
+# you've confirmed the expected-users/privs files are accurate, to actually
+# apply remediation.
+ExecStart=/opt/nccdc-tools/user_priv_audit.sh \
+    -l /etc/nccdc-tools/expected_users.txt \
+    -p /etc/nccdc-tools/expected_privs.txt \
+    -o /var/log/user_priv_audit.log
+
+# Cap how long a single run may take so a hang can't block the next timer fire.
+TimeoutStartSec=60
+
+# Also send stdout/stderr (the live report) to the journal, independent of
+# the -o logfile and syslog action entries the script writes itself.
+StandardOutput=journal
+StandardError=journal

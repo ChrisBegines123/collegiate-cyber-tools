@@ -176,6 +176,12 @@ Describe 'Invoke-CheckADUsers (unattended, mocked AD/event log)' {
         Should -Invoke Remove-ADGroupMember -Times 0
     }
 
+    It '-WhatIf previews the plan without disabling or demoting anyone, even unattended' {
+        & "$PSScriptRoot/Check-ADUsers.ps1" -UsersFile $script:usersFile -AdminsFile $script:adminsFile -WhatIf
+        Should -Invoke Disable-ADAccount -Times 0
+        Should -Invoke Remove-ADGroupMember -Times 0
+    }
+
     It 'aborts safely when the users list file is empty' {
         Set-Content -Path $script:usersFile -Value @()
 

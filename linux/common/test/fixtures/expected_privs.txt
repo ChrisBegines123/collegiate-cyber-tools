@@ -1,0 +1,3 @@
+# username:comma,separated,allowed,privileged,groups
+alice:sudo
+carol:

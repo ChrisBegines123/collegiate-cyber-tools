@@ -1,0 +1,4 @@
+#!/bin/sh
+# Test stub for pkill: records the call instead of really killing anything.
+[ -n "${FAKE_ACTIONS_LOG:-}" ] && echo "pkill $*" >> "$FAKE_ACTIONS_LOG"
+exit 0

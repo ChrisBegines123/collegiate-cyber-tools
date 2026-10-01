@@ -1,0 +1,17 @@
+[Unit]
+Description=Run user_priv_audit.sh on a schedule
+
+[Timer]
+# First run shortly after boot, then every 5 minutes. Tune to how fast you
+# expect red team persistence to appear vs. how much journal/log noise and
+# CPU you're willing to spend.
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+# If the box was off/asleep when a run was due, run it as soon as it's back.
+Persistent=true
+
+Unit=user_priv_audit.service
+
+[Install]
+WantedBy=timers.target

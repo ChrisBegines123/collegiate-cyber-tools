@@ -1,0 +1,4 @@
+#!/bin/sh
+# Test stub for usermod: records the call instead of really expiring anyone.
+[ -n "${FAKE_ACTIONS_LOG:-}" ] && echo "usermod $*" >> "$FAKE_ACTIONS_LOG"
+exit 0

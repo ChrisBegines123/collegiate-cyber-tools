@@ -1,0 +1,5 @@
+#!/bin/sh
+# Test stub for logger: swallows syslog writes so tests never touch the
+# real journal.
+[ -n "${FAKE_ACTIONS_LOG:-}" ] && echo "logger $*" >> "$FAKE_ACTIONS_LOG"
+exit 0
