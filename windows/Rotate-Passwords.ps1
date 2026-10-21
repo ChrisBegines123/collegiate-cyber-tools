@@ -52,6 +52,6 @@ ForEach-Object {
 		Add-Content $outfile "$user,$(ConvertFrom-SecureString -SecureString $pw -Key $key)"
 		Write-Host "Password changed for $user"
 	} catch {
-		Write-Error "Something went wrong when attempting to change the password for $user: $($_.Exception.Message)"
+		Write-Error "Something went wrong when attempting to change the password for ${user}: $($_.Exception.Message)"
 	}
 }
