@@ -1,0 +1,52 @@
+name: windows-scripts
+
+on:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-scripts.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-scripts.yml'
+
+jobs:
+  # Fast static check that the scripts only use syntax, cmdlets and .NET members
+  # that exist in Windows PowerShell 5.1 (see windows/PSScriptAnalyzerSettings.psd1).
+  lint-ps51-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PSScriptAnalyzer (5.1 compatibility)
+        shell: pwsh
+        working-directory: windows
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          # Test files are excluded: the 5.1 profile only knows the built-in Pester 3.x 'Should'.
+          $results = Get-ChildItem -Filter *.ps1 |
+              Where-Object Name -notlike '*.Tests.ps1' |
+              ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Settings ./PSScriptAnalyzerSettings.psd1 }
+          $results | Format-List RuleName, ScriptName, Line, Message
+          if ($results) { throw "$(@($results).Count) compatibility finding(s)" }
+
+  # Runs the Pester suites for real: Windows PowerShell 5.1 (powershell.exe,
+  # what stock Windows Server ships) and PowerShell 7 (pwsh).
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Pester 5
+        shell: ${{ matrix.shell }}
+        run: |
+          Install-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser
+      - name: Run Pester tests
+        shell: ${{ matrix.shell }}
+        working-directory: windows
+        run: |
+          $PSVersionTable.PSVersion
+          Import-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99
+          Invoke-Pester -Path . -Output Detailed -CI
