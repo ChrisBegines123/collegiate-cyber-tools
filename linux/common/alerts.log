@@ -1,0 +1,46 @@
+[2026-11-03 19:40:09] [HIGH] NEW USER ACCOUNT CREATED
+Username: hi_seth
+UID: 1001
+GID: 1002
+----------------------------------------
+[2026-11-03 19:40:09] [HIGH] NEW GROUP CREATED
+Group: hi_seth
+GID: 1002
+Members: none
+----------------------------------------
+[2026-11-03 19:40:57] [HIGH] NEW USER ACCOUNT CREATED
+Username: hi_seth
+UID: 1001
+GID: 1002
+----------------------------------------
+[2026-11-03 19:40:57] [HIGH] NEW GROUP CREATED
+Group: hi_seth
+GID: 1002
+Members: none
+----------------------------------------
+[2026-11-03 19:47:34] [HIGH] SCORE=5 PID=11834 PPID=10650 USER=kesifan
+Name: python3
+Parent: bash
+Executable: /tmp/python3
+Command: /tmp/python3 -c import time; time.sleep(3) 
+Reasons: Inline Python execution Executable running from /tmp
+----------------------------------------
+[2026-11-03 19:49:32] [HIGH] NEW USER ACCOUNT CREATED
+Username: hi_seth
+UID: 1001
+GID: 1002
+----------------------------------------
+[2026-11-03 19:49:32] [HIGH] NEW GROUP CREATED
+Group: hi_seth
+GID: 1002
+Members: none
+----------------------------------------
+[2026-11-03 19:49:38] [HIGH] USER ACCOUNT DELETED
+Username: hi_seth
+UID: 1001
+GID: 1002
+----------------------------------------
+[2026-11-03 19:49:38] [HIGH] GROUP DELETED
+Group: hi_seth
+GID: 1002
+----------------------------------------

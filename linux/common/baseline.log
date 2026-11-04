@@ -1,0 +1,21 @@
+[2026-11-03 19:39:25] PID=10650 PPID=7461 USER=kesifan NAME=bash EXE=/usr/bin/bash CMD=bash 
+[2026-11-03 19:39:28] PID=10714 PPID=2 USER=root NAME=kworker/2:1 EXE=unknown CMD=[kworker/2:1]
+[2026-11-03 19:39:46] PID=10761 PPID=2 USER=root NAME=kworker/u32:5 EXE=unknown CMD=[kworker/u32:5]
+[2026-11-03 19:39:52] PID=10784 PPID=2 USER=root NAME=kworker/6:0 EXE=unknown CMD=[kworker/6:0]
+[2026-11-03 19:39:52] PID=10785 PPID=1 USER=root NAME=nm-dispatcher EXE=unknown CMD=/usr/libexec/nm-dispatcher 
+[2026-11-03 19:40:07] PID=10842 PPID=10650 USER=kesifan NAME=sudo EXE=unknown CMD=sudo useradd hi_seth 
+[2026-11-03 19:40:07] PID=10843 PPID=1 USER=root NAME=fprintd EXE=unknown CMD=/usr/libexec/fprintd 
+[2026-11-03 19:40:40] PID=10957 PPID=2 USER=root NAME=kworker/4:1-cgroup_free EXE=unknown CMD=[kworker/4:1-cgroup_free]
+[2026-11-03 19:40:43] PID=10979 PPID=484 USER=root NAME=(udev-worker) EXE=unknown CMD=(udev-worker) 
+[2026-11-03 19:41:04] PID=11039 PPID=2 USER=root NAME=kworker/5:1-events EXE=unknown CMD=[kworker/5:1-events]
+[2026-11-03 19:42:08] PID=11179 PPID=2 USER=root NAME=kworker/1:2-events EXE=unknown CMD=[kworker/1:2-events]
+[2026-11-03 19:42:49] PID=11278 PPID=10650 USER=kesifan NAME=nc EXE=/usr/bin/ncat CMD=nc 1.1.1.1 
+[2026-11-03 19:43:46] PID=11395 PPID=2 USER=root NAME=kworker/3:2 EXE=unknown CMD=[kworker/3:2]
+[2026-11-03 19:44:15] PID=11452 PPID=2 USER=root NAME=kworker/u33:0 EXE=unknown CMD=[kworker/u33:0]
+[2026-11-03 19:44:44] PID=11514 PPID=10650 USER=kesifan NAME=sudo EXE=unknown CMD=sudo nc -l 445 
+[2026-11-03 19:44:44] PID=11518 PPID=11514 USER=kesifan NAME=sudo EXE=unknown CMD=sudo nc -l 445 
+[2026-11-03 19:44:44] PID=11519 PPID=11518 USER=root NAME=nc EXE=unknown CMD=nc -l 445 
+[2026-11-03 19:45:02] PID=11590 PPID=10650 USER=kesifan NAME=python3 EXE=/usr/bin/python3.13 CMD=python3 -c import time; time.sleep(3) 
+[2026-11-03 19:46:14] PID=11707 PPID=2 USER=root NAME=kworker/5:2 EXE=unknown CMD=[kworker/5:2]
+[2026-11-03 19:47:07] PID=11776 PPID=2 USER=root NAME=kworker/4:2 EXE=unknown CMD=[kworker/4:2]
+[2026-11-03 19:47:34] PID=11834 PPID=10650 USER=kesifan NAME=python3 EXE=/tmp/python3 CMD=/tmp/python3 -c import time; time.sleep(3) 

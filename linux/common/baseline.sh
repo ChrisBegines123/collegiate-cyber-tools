@@ -226,6 +226,62 @@ alert_new_group() {
     } >> "$ALERT_FILE"
 }
 
+alert_deleted_user() {
+    local user="$1" uid="$2" gid="$3"
+
+    local alert
+    alert=$(printf '[%s] [HIGH] USER ACCOUNT DELETED\nUsername: %s\nUID: %s\nGID: %s\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" "$user" "$uid" "$gid")
+
+    echo
+    echo "$alert"
+    echo "----------------------------------------"
+
+    {
+        echo "$alert"
+        echo "----------------------------------------"
+    } >> "$ALERT_FILE"
+}
+
+alert_deleted_group() {
+    local group="$1" gid="$2"
+
+    local alert
+    alert=$(printf '[%s] [HIGH] GROUP DELETED\nGroup: %s\nGID: %s\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" "$group" "$gid")
+
+    echo
+    echo "$alert"
+    echo "----------------------------------------"
+
+    {
+        echo "$alert"
+        echo "----------------------------------------"
+    } >> "$ALERT_FILE"
+}
+
+check_deleted_users() {
+    local name uid gid
+
+    for name in "${!previous_users[@]}"; do
+        if [[ -z "${current_users[$name]+x}" ]]; then
+            uid="${previous_users[$name]%%:*}"
+            gid="${previous_users[$name]##*:}"
+            alert_deleted_user "$name" "$uid" "$gid"
+        fi
+    done
+}
+
+check_deleted_groups() {
+    local name
+
+    for name in "${!previous_groups[@]}"; do
+        if [[ -z "${current_groups[$name]+x}" ]]; then
+            alert_deleted_group "$name" "${previous_groups[$name]}"
+        fi
+    done
+}
+
 snapshot_users() {
     local name _pw uid gid _rest
 
@@ -295,7 +351,7 @@ done
 INITIALIZED=true
 
 echo "[+] Baseline established: ${#previous[@]} processes, ${#previous_users[@]} users, ${#previous_groups[@]} groups"
-echo "[*] Monitoring for suspicious processes, new users, and new groups..."
+echo "[*] Monitoring for suspicious processes and new/deleted users and groups..."
 echo
 
 while true; do
@@ -309,6 +365,9 @@ while true; do
 
     current_groups=()
     snapshot_groups
+
+    check_deleted_users
+    check_deleted_groups
 
     previous=()
     for pid in "${!current[@]}"; do
