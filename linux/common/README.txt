@@ -1,5 +1,21 @@
 This is for common linux scripts that will work on any distro.
 
+rotate_passwords.py / get_password.py
+-------------------
+Resets every local, human user account (UID >= 1000, excluding
+root/nobody/whoever ran it) to a fresh random password via chpasswd,
+and writes the new passwords to passwords_<timestamp>.csv next to the
+script, encrypted with a master password you type in (PBKDF2-HMAC-SHA256
++ an HMAC-based keystream cipher, stdlib only - no pip install needed).
+get_password.py decrypts that file back with the same master password.
+
+Usage:
+    sudo ./rotate_passwords.py [--min-uid UID] [--length N] [--exclude USER ...]
+    ./get_password.py [--user USERNAME] [--file FILE]
+
+rotate_passwords.py must run as root. get_password.py defaults to the
+newest passwords_*.csv in the current directory if --file is omitted.
+
 user_priv_audit.sh
 -------------------
 Audits local accounts/privileges and, with -a, remediates what it finds

@@ -8,8 +8,10 @@
   outputs = inputs: {
     devShells = builtins.mapAttrs (system: pkgs: {
       default = pkgs.mkShell {
-        packages = [
-          pkgs.bats
+        packages = with pkgs; [
+          bats
+          python3
+          python3Packages.pytest
         ];
       };
     }) inputs.nixpkgs.legacyPackages;

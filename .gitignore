@@ -2,3 +2,5 @@
 windows/.direnv/
 linux/.direnv/
 freebsd/.direnv/
+__pycache__/
+.pytest_cache/
