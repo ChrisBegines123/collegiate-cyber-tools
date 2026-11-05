@@ -23,3 +23,6 @@ try {
 catch {
     Write-Host "Failed to reset password: $($_.Exception.Message)"
 }
+
+
+# Make it so we can iterate over multiple users if we want to, and assign them random passwords
