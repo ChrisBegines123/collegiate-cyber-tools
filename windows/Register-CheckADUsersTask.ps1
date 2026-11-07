@@ -93,9 +93,15 @@ if ($AdminsFile) {
 }
 
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argumentList
+# [TimeSpan]::MaxValue has a fractional-tick remainder that the ScheduledTasks
+# module can serialize into invalid duration XML on some locales, causing
+# Register-ScheduledTask to fail with "The task XML contains a value which is
+# incorrectly formatted or out of range." A finite, whole-number duration
+# (10 years) serializes cleanly everywhere and is indefinite for any
+# practical purpose.
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) `
-    -RepetitionDuration ([TimeSpan]::MaxValue)
+    -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
 
