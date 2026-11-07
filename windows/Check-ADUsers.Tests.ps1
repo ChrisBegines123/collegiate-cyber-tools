@@ -193,4 +193,12 @@ Describe 'Invoke-CheckADUsers (unattended, mocked AD/event log)' {
         Should -Invoke Disable-ADAccount -Times 0
         Should -Invoke Remove-ADGroupMember -Times 0
     }
+
+    It 'runs the user check but skips Domain Admins reconciliation when -AdminsFile is omitted' {
+        & "$PSScriptRoot/Check-ADUsers.ps1" -UsersFile $script:usersFile
+
+        Should -Invoke Disable-ADAccount -Times 1 -Exactly -ParameterFilter { $Identity -eq 'eve' }
+        Should -Invoke Get-ADGroupMember -Times 0
+        Should -Invoke Remove-ADGroupMember -Times 0
+    }
 }

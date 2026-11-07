@@ -24,10 +24,13 @@
 
 .PARAMETER UsersFile
     Path to a text file listing authorized usernames, one per line. Supplying
-    this (together with -AdminsFile) switches the script to unattended mode.
+    this switches the script to unattended mode.
 
 .PARAMETER AdminsFile
-    Path to a text file listing authorized Domain Admins usernames, one per line.
+    Path to a text file listing authorized Domain Admins usernames, one per
+    line. Optional in unattended mode: if omitted (while -UsersFile is
+    supplied), the Domain Admins reconciliation is skipped entirely and only
+    the user check runs.
 
 .PARAMETER Force
     In interactive mode, skip the "type YES" confirmation prompt.
@@ -49,6 +52,11 @@
     .\Check-ADUsers.ps1 -UsersFile C:\ADReconciliation\users.txt -AdminsFile C:\ADReconciliation\admins.txt
     Unattended run suitable for a Scheduled Task: no prompts, applies changes,
     logs everything to the event log.
+
+.EXAMPLE
+    .\Check-ADUsers.ps1 -UsersFile C:\ADReconciliation\users.txt
+    Unattended run with only the user check: no -AdminsFile means Domain
+    Admins membership is left untouched.
 
 .NOTES
     Requires the ActiveDirectory PowerShell module (RSAT) and permissions to
@@ -89,7 +97,7 @@ $ErrorActionPreference = 'Stop'
 # Accounts that must never be disabled or stripped of admin rights.
 $SafeAccounts = @('krbtgt', 'Administrator', 'Guest', $env:USERNAME) | Where-Object { $_ }
 
-$Unattended = [bool]$UsersFile -and [bool]$AdminsFile
+$Unattended = [bool]$UsersFile
 
 $script:EventLogAvailable = $false
 
@@ -215,11 +223,18 @@ function Invoke-CheckADUsers {
     Import-ADModuleOrExit
 
     if ($Unattended) {
-        $authorizedUsers  = Read-NameListFromFile -Path $UsersFile
-        $authorizedAdmins = Read-NameListFromFile -Path $AdminsFile
+        $authorizedUsers = Read-NameListFromFile -Path $UsersFile
+        $checkAdmins = [bool]$AdminsFile
+        if ($checkAdmins) {
+            $authorizedAdmins = Read-NameListFromFile -Path $AdminsFile
+        } else {
+            $authorizedAdmins = @()
+            Write-ReconciliationLog -Message "No -AdminsFile supplied; skipping Domain Admins reconciliation." -EventId 1001
+        }
     } else {
         $authorizedUsers  = Read-NameListFromConsole -Prompt "AUTHORIZED USERS - everyone allowed to have an active account:"
         $authorizedAdmins = Read-NameListFromConsole -Prompt "AUTHORIZED ADMINS - everyone allowed to remain in Domain Admins:"
+        $checkAdmins = $true
     }
 
     if ($authorizedUsers.Count -eq 0) {
@@ -229,8 +244,11 @@ function Invoke-CheckADUsers {
 
     $allUsers = Get-ADUser -Filter { Enabled -eq $true } -Properties SamAccountName
 
-    $domainAdmins = Get-ADGroupMember -Identity 'Domain Admins' -Recursive |
-        Where-Object { $_.objectClass -eq 'user' }
+    $domainAdmins = @()
+    if ($checkAdmins) {
+        $domainAdmins = Get-ADGroupMember -Identity 'Domain Admins' -Recursive |
+            Where-Object { $_.objectClass -eq 'user' }
+    }
 
     $plan = Get-ReconciliationPlan -AllUsers $allUsers -DomainAdmins $domainAdmins `
         -AuthorizedUsers $authorizedUsers -AuthorizedAdmins $authorizedAdmins -SafeAccounts $SafeAccounts
@@ -238,7 +256,8 @@ function Invoke-CheckADUsers {
     $usersToDisable = $plan.UsersToDisable
     $adminsToDemote = $plan.AdminsToDemote
 
-    Write-ReconciliationLog -Message "Plan: disable $($usersToDisable.Count) user(s) [$($usersToDisable.SamAccountName -join ', ')]; revoke Domain Admins from $($adminsToDemote.Count) account(s) [$($adminsToDemote.SamAccountName -join ', ')]." -EventId 1001
+    $adminsPlanText = if ($checkAdmins) { "revoke Domain Admins from $($adminsToDemote.Count) account(s) [$($adminsToDemote.SamAccountName -join ', ')]" } else { "Domain Admins check skipped" }
+    Write-ReconciliationLog -Message "Plan: disable $($usersToDisable.Count) user(s) [$($usersToDisable.SamAccountName -join ', ')]; $adminsPlanText." -EventId 1001
 
     if ($usersToDisable.Count -eq 0 -and $adminsToDemote.Count -eq 0) {
         Write-ReconciliationLog -Message "Nothing to do." -EventId 1007
