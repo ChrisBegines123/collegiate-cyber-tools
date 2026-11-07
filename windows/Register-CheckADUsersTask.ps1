@@ -6,11 +6,11 @@
 
 .DESCRIPTION
     Creates (or replaces) a Scheduled Task that invokes Check-ADUsers.ps1 in
-    unattended mode (-UsersFile/-AdminsFile) every IntervalMinutes, starting
-    immediately and repeating indefinitely. Check-ADUsers.ps1 itself writes
-    every run's plan/actions to the "AD Account Reconciliation" event log;
-    Task Scheduler's own history additionally records run times and exit
-    codes.
+    unattended mode (-UsersFile, optionally -AdminsFile) every
+    IntervalMinutes, starting immediately and repeating indefinitely.
+    Check-ADUsers.ps1 itself writes every run's plan/actions to the "AD
+    Account Reconciliation" event log; Task Scheduler's own history
+    additionally records run times and exit codes.
 
 .PARAMETER ScriptPath
     Path to Check-ADUsers.ps1 on the machine the task will run on.
@@ -20,6 +20,9 @@
 
 .PARAMETER AdminsFile
     Path to the authorized-admins list, passed through to Check-ADUsers.ps1.
+    Optional: if omitted, the scheduled task runs Check-ADUsers.ps1 with only
+    -UsersFile, so it performs the user check and skips Domain Admins
+    reconciliation entirely.
 
 .PARAMETER IntervalMinutes
     How often to run. Default 5.
@@ -45,6 +48,12 @@
 
     Registers the task to run as a delegated service account every 10 minutes.
 
+.EXAMPLE
+    .\Register-CheckADUsersTask.ps1 -ScriptPath C:\ADReconciliation\Check-ADUsers.ps1 -UsersFile C:\ADReconciliation\users.txt
+
+    Registers the task with only the user check; Domain Admins membership is
+    left untouched since no -AdminsFile was supplied.
+
 .NOTES
     Must be run elevated (as Administrator) on the machine hosting the task.
     Requires the ScheduledTasks PowerShell module (built into Windows).
@@ -60,7 +69,7 @@
 param(
     [Parameter(Mandatory)][string]$ScriptPath,
     [Parameter(Mandatory)][string]$UsersFile,
-    [Parameter(Mandatory)][string]$AdminsFile,
+    [string]$AdminsFile,
     [int]$IntervalMinutes = 5,
     [string]$TaskName = 'Check-ADUsers',
     [pscredential]$Credential
@@ -74,11 +83,14 @@ if (-not (Test-Path -Path $ScriptPath)) {
 if (-not (Test-Path -Path $UsersFile)) {
     throw "UsersFile not found: $UsersFile"
 }
-if (-not (Test-Path -Path $AdminsFile)) {
+if ($AdminsFile -and -not (Test-Path -Path $AdminsFile)) {
     throw "AdminsFile not found: $AdminsFile"
 }
 
-$argumentList = "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`" -UsersFile `"$UsersFile`" -AdminsFile `"$AdminsFile`""
+$argumentList = "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`" -UsersFile `"$UsersFile`""
+if ($AdminsFile) {
+    $argumentList += " -AdminsFile `"$AdminsFile`""
+}
 
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argumentList
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
