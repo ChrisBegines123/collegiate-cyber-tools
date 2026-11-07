@@ -1,0 +1,129 @@
+STANDARD OPERATING PROCEDURE (SOP)
+
+Document Title:
+Document ID:
+Version:
+Author:
+Date Created:
+Last Updated:
+Approved By:
+
+
+1. PURPOSE
+------------------------------------------------------------
+
+Describe the purpose of this procedure.
+
+Example:
+This SOP describes the process for reviewing, approving,
+and applying operating system security updates.
+
+
+2. SCOPE
+------------------------------------------------------------
+
+Systems Covered:
+Personnel Covered:
+Locations Covered:
+
+Example:
+This procedure applies to all Windows Server 2022 systems
+within the enterprise network.
+
+
+3. ROLES AND RESPONSIBILITIES
+------------------------------------------------------------
+
+Role:
+Responsibilities:
+
+Example:
+
+System Administrator:
+- Perform technical implementation
+- Verify service functionality
+
+Security Team:
+- Review security impact
+- Validate compliance requirements
+
+Management:
+- Approve maintenance windows
+
+
+4. PREREQUISITES
+------------------------------------------------------------
+
+Required Access:
+Required Tools:
+Required Documentation:
+
+
+5. PROCEDURE
+------------------------------------------------------------
+
+Step 1:
+Description:
+
+Expected Result:
+
+Step 2:
+Description:
+
+Expected Result:
+
+Step 3:
+Description:
+
+Expected Result:
+
+(Add steps as necessary)
+
+
+6. VALIDATION
+------------------------------------------------------------
+
+Verification Method:
+
+Commands Used:
+
+Expected Output:
+
+Actual Output:
+
+Result:
+[ ] Pass
+[ ] Fail
+
+
+7. ROLLBACK PROCEDURE
+------------------------------------------------------------
+
+Conditions Requiring Rollback:
+
+Rollback Steps:
+
+1.
+2.
+3.
+
+Verification After Rollback:
+
+
+8. REFERENCES
+------------------------------------------------------------
+
+Related SOPs:
+
+Vendor Documentation:
+
+Policies:
+
+
+9. CHANGE HISTORY
+------------------------------------------------------------
+
+Date:
+Version:
+Author:
+Description of Change:
