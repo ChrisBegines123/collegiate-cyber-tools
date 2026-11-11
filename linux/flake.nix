@@ -12,6 +12,7 @@
           bats
           python3
           python3Packages.pytest
+          python3Packages.cryptography
         ];
       };
     }) inputs.nixpkgs.legacyPackages;
