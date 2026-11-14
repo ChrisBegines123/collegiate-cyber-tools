@@ -21,8 +21,7 @@ Description=Mirror clipboard to keyd
 PartOf=graphical-session.target
 
 [Service]
-ExecStart=wl-paste --type text --watch sh -c "[ "$CLIPBOARD_STATE" = "sensitive" ] && exit 0
-cat > /etc/keyd/clip"
+ExecStart=wl-paste --type text --watch sh -c "[ "$CLIPBOARD_STATE" != "sensitive" ] && cat > /etc/keyd/clip"
 Restart=on-failure
 EOF
 
@@ -42,10 +41,41 @@ else
 fi
 EOF
 
+elif [[ $(which xclip) ]]; then
+  echo "could not find wl-clipboard, using vibed version"
+  touch /etc/keyd/clip
+  chmod 720 /etc/keyd/clip
+  chown root:wheel /etc/keyd/clip
+
+  sudo tee /etc/systemd/user/keyd-clip.service >/dev/null <<'EOF'
+[Unit]
+After=graphical-session.target
+Description=Mirror clipboard to keyd
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/bin/sh -c 'while clipnotify -s clipboard; do xclip -o -selection clipboard -t TARGETS 2>/dev/null | grep -q x-kde-passwordManagerHint && continue; xclip -o -selection clipboard -t UTF8_STRING > /etc/keyd/clip.tmp 2>/dev/null && mv /etc/keyd/clip.tmp /etc/keyd/clip; done'
+cat > /etc/keyd/clip"
+Restart=on-failure
+EOF
+
+  # this is the keyd config that captures ctr+alt+v
+  sudo tee "/etc/keyd/default.conf" >/dev/null <<'EOF'
+[ids]
+*
+[control+alt]
+v=command(keyd input -t 10 "$(cat /etc/keyd/clip)")
+EOF
+
+  cat >"$HOME/.local/bin/keyd-clip-toggle" <<'EOF'
+if systemctl --user is-active --quiet keyd-clip; then
+  systemctl --user stop --quiet keyd-clip
 else
-  echo "could not find wl-clipboard, I don't know how to proceed"
-  exit 37
+  systemctl --user start --quiet keyd-clip
 fi
+EOF
+fi
+
 if [[ -n "$(which waybar)" ]]; then
   echo "Found waybar, adding a status script"
   cat >"$HOME/.local/bin/keyd-clip-status" <<'EOF'
