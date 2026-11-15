@@ -244,6 +244,121 @@ Describe 'Rotate-Passwords.ps1 (mocked AD, in-memory output file)' {
         }
     }
 
+    Context 'rollback' {
+
+        BeforeEach {
+            # The rollback file is whatever the test puts in $global:RotateTest.Rollback.
+            Mock Get-Content { $global:RotateTest.Rollback } -ParameterFilter { $LiteralPath -eq 'rollback.csv' }
+        }
+
+        It 'restores the passwords from an earlier encrypted file' {
+            & $script:scriptPath
+            $original = @{}
+            $script:resets | ForEach-Object { $original[$_.Identity] = $_.Password }
+            $global:RotateTest.Rollback = @($script:fileLines)
+
+            & $script:scriptPath     # a second rotation, which the rollback undoes
+            $script:resets.Clear()
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            $script:resets.Identity | Should -Be @('alice', 'bob')
+            foreach ($r in $script:resets) { $r.Password | Should -BeExactly $original[$r.Identity] }
+            Should -Invoke Get-ADUser -Times 2 -Exactly   # the two rotations only
+        }
+
+        It 'changes nothing when the master password does not match the encrypted file' {
+            & $script:scriptPath
+            $global:RotateTest.Rollback = @($script:fileLines)
+            $script:resets.Clear()
+            $global:RotateTest.Master = 'wrong password'
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            $script:resets.Count | Should -Be 0
+            Should -Invoke Write-Error -Times 1 -Exactly
+            Should -Invoke Set-Content -Times 1 -Exactly   # only the first run wrote a file
+        }
+
+        It 'restores the passwords from a plaintext CSV, whatever the column order or case' {
+            $global:RotateTest.Rollback = @('Password,Group,UserName', 'Init1al!alice,staff,alice', 'Init1al!bob,staff,bob')
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            $script:resets.Identity | Should -Be @('alice', 'bob')
+            $script:resets.Password | Should -Be @('Init1al!alice', 'Init1al!bob')
+            $script:resets | ForEach-Object { $_.Secure | Should -BeOfType [securestring] }
+        }
+
+        It 'never rolls back a protected account, even if the file lists it' {
+            $global:RotateTest.Rollback = @('username,password', 'Administrator,Default1!', 'krbtgt,Default1!', 'OPERATOR,Default1!', 'alice,Init1al!alice')
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            $script:resets.Identity | Should -Be @('alice')
+        }
+
+        It 'records the restored passwords in a new encrypted file' {
+            $global:RotateTest.Rollback = @('username,password', 'alice,Init1al!alice')
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            $script:fileLines[0] | Should -Match '^salt,'
+            $script:fileLines[2] | Should -BeLike 'alice,*'
+            ($script:fileLines -join "`n") | Should -Not -BeLike '*Init1al!alice*'
+
+            $salt = [Convert]::FromBase64String(($script:fileLines[0] -split ',')[1])
+            $kdf = [System.Security.Cryptography.Rfc2898DeriveBytes]::new(
+                $script:masterPassword, $salt, 600000,
+                [System.Security.Cryptography.HashAlgorithmName]::SHA256)
+            $key = $kdf.GetBytes(32)
+            $kdf.Dispose()
+            $cipher = ($script:fileLines[2] -split ',', 2)[1]
+            Get-Plaintext (ConvertTo-SecureString -String $cipher -Key $key) | Should -BeExactly 'Init1al!alice'
+        }
+
+        It 'changes nothing when a plaintext CSV has no username or password column' {
+            $global:RotateTest.Rollback = @('alice,Init1al!alice', 'bob,Init1al!bob')
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            $script:resets.Count | Should -Be 0
+            Should -Invoke Write-Error -Times 1 -Exactly
+            Should -Invoke Set-Content -Times 0
+        }
+
+        It 'changes nothing when a plaintext CSV row is missing its password' {
+            $global:RotateTest.Rollback = @('username,password', 'alice,Init1al!alice', 'bob,')
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            $script:resets.Count | Should -Be 0
+            Should -Invoke Write-Error -Times 1 -Exactly
+        }
+
+        It 'stops before prompting if the rollback file cannot be read' {
+            Mock Get-Content { throw 'file not found' } -ParameterFilter { $LiteralPath -eq 'rollback.csv' }
+
+            { & $script:scriptPath -RollbackFile 'rollback.csv' } | Should -Throw -ExpectedMessage '*file not found*'
+            Should -Invoke Read-Host -Times 0
+            Should -Invoke Set-ADAccountPassword -Times 0
+        }
+
+        It 'keeps going after one rollback fails, and records only the successes' {
+            $global:RotateTest.Rollback = @('username,password', 'ghost,Init1al!ghost', 'bob,Init1al!bob')
+            Mock Set-ADAccountPassword {
+                if ($Identity -eq 'ghost') { throw 'cannot find an object with identity ghost' }
+                $global:RotateTest.Resets.Add([PSCustomObject]@{ Identity = $Identity; Password = [System.Net.NetworkCredential]::new('', $NewPassword).Password; Secure = $NewPassword })
+            }
+
+            & $script:scriptPath -RollbackFile 'rollback.csv'
+
+            Should -Invoke Write-Error -Times 1 -Exactly
+            $script:resets.Identity | Should -Be @('bob')
+            @($script:fileLines | Select-Object -Skip 2).Count | Should -Be 1
+        }
+    }
+
     Context 'the master password prompt' {
 
         It 'is read as a SecureString, so it is not echoed' {
