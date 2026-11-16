@@ -1,0 +1,2 @@
+﻿New-NetFirewallRule -DisplayName KFSensorTCP -Protocol TCP -Action Allow -Direction Inbound -LocalPort 21,22,23,25,42,53,80,110,111,113,143
+New-NetFirewallRule -DisplayName KFSensorUDP -Protocol UDP -Action Allow -Direction Inbound -LocalPort 42,53,88,137,138,161,389,500,1026,1027

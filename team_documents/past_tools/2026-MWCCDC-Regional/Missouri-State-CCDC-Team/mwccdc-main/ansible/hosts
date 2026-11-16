@@ -1,0 +1,11 @@
+172.20.240.10   docker
+172.20.240.20   debiandns
+172.20.242.10   ubuntuS
+172.20.242.200  windowsAD
+# INSERT UBUNTU WORKSTATION IP HERE ubuntuwkst
+172.20.241.20   splunk
+172.20.241.30   ecomm
+172.20.241.40   webmail
+172.20.242.150  palo
+# WINDOWS 10 IP HERE windows
+# 0.0.0.0 narnia

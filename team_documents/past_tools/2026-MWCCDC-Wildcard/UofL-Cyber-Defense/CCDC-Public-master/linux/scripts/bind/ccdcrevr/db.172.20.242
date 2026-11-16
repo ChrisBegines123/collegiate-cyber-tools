@@ -1,0 +1,13 @@
+$TTL 86400
+@   IN  SOA ns1.ccdcteam01.user. admin.ccdcteam01.user. (
+            1         ; Serial
+            604800    ; Refresh
+            86400     ; Retry
+            2419200   ; Expire
+            86400 )   ; Negative Cache TTL
+;
+@       IN  NS      ns1.ccdcteam01.user.
+
+10      IN  PTR     ns1.ccdcteam01.user.
+200     IN  PTR     ad-server.ccdcteam01.user.
+210     IN  PTR     workstation.ccdcteam01.user.

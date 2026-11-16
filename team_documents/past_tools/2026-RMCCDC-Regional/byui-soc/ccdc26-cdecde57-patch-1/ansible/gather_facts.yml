@@ -1,0 +1,25 @@
+---
+# CCDC26 - Gather Facts from All Hosts
+#
+# Collects comprehensive system information for baseline documentation
+# Output: ./collected_facts/<hostname>.json
+#
+# Usage:
+#   ansible-playbook -i inventory.ini gather_facts.yml
+#
+
+- name: Gather facts from all hosts
+  hosts: all
+  gather_facts: yes
+
+  roles:
+    - gather
+
+  post_tasks:
+    - name: Create summary report
+      local_action:
+        module: template
+        src: templates/summary.j2
+        dest: "./collected_facts/SUMMARY.txt"
+      run_once: true
+      ignore_errors: yes

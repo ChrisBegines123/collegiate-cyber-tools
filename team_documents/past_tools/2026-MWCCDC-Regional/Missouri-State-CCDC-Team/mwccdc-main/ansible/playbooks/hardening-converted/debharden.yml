@@ -1,0 +1,154 @@
+--- 
+- name: Harden Debian Servers
+  hosts: debian_servers
+  become: true
+  vars:
+    backup_user: "ccdcir"
+    ssh_port: 22
+    new_root_password: "{{ vault_root_password | default('ChangeMe2025!') }}"
+    dns_servers:
+      - 8.8.8.8
+      - 8.8.4.4
+    allowed_ports:
+    - { port: '22', proto: 'tcp', comment: 'SSH' }
+    - { port: '53', proto: 'tcp', comment: 'DNS' }
+    - { port: '53', proto: 'udp', comment: 'DNS' }
+    - { port: '123', proto: 'udp', comment: 'NTP' }
+ 
+  tasks:
+    - name: Update and install required software 
+      ansible.builtin.package:
+        update_cache: true
+        upgrade: true
+        name: 
+          - bind9
+          - bind9utils
+          - bind9-doc
+          - ntp
+          - ntpdate
+          - tmux
+          - ufw
+          - dnsutils
+          - net-tools
+          - ufw
+        state: present
+    
+    - name: Change the password of the root user
+      ansible.builtin.user:
+        name: root
+        password: "{{ new_root_password | password_hash('sha512') }}"
+        update_password: always
+
+    - name: Backup the base configuration
+      community.general.archive:
+        path:
+          - /root/
+          - /etc/bind 
+          - /etc/cron*
+          - /etc/passwd
+          - /etc/group
+          - /etc/shadow
+          - /etc/sudoers*
+          - /etc/hosts
+          - /etc/hostname
+          - /etc/aliases
+          - /etc/systemd
+          - /etc/apt
+          - /etc/resolv.conf
+          - /var/cache/bind
+          - /var/lib/bind
+          - /etc/default/ntp
+        dest: /root/backup/inital-backup.tgz
+        creates: /root/backup
+        attributes: 600
+
+    - name: Copy backup to ansible control host
+      ansible.builtin.fetch:
+        src: /root/backup/inital-backup.tgz
+        dest: "./backups/{{ inventory_hostname }}-{{ ansible_date_time.epoch }}-backup.tgz"
+        flat: true
+      
+    - name: Find suspicious PHP files
+      ansible.builtin.find:
+        paths: ["/var/www", "/home", "/tmp"]
+        patterns: ["*.php"]
+        contains: "(eval|exec|system|shell_exec|base64_decode)"
+        use_regex: true
+      register: suspicious_php
+      ignore_errors: true
+    
+    - name: Report suspicious PHP files
+      ansible.builtin.debug:
+        var: suspicious_php.files
+      when: suspicious_php.files | length > 0
+    
+        
+    - name: Create backup user for emergency access
+      user:
+        name: "{{ backup_user }}"
+        password: "{{ new_root_password | password_hash('sha512') }}"
+        groups: sudo
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+    
+    - name: Ensure UFW Logging is enabled
+      community.general.ufw:
+        logging: full
+    
+    - name: Configure UFW firewall rules
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment | default('') }}"
+      loop: "{{ allowed_ports }}"
+      become: true
+      when: enable_firewall | default(true) | bool
+    
+    - name: Set default policy to deny incoming
+      community.general.ufw:
+        default: deny
+        direction: incoming 
+    
+    - name: Set default policy to allow outgoing
+      community.general.ufw:
+        default: allow
+        direction: outgoing
+
+    - name: Reload UFW
+      community.general.ufw:
+        state: reloaded
+
+  post_tasks:
+    - name: Verify critical services are running
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - ssh
+        - bind9
+        - ntp
+        - ufw
+      register: service_status
+      failed_when: false
+      
+    - name: Report service status
+      debug:
+        msg: "Service {{ item.item }} is {{ 'running' if item.state == 'started' else 'NOT running' }}"
+      loop: "{{ service_status.results }}"
+      
+    - name: Test DNS resolution
+      command: nslookup google.com 127.0.0.1
+      register: dns_test
+      failed_when: false
+      changed_when: false
+      
+    - name: Report DNS status
+      debug:
+        msg: "DNS resolution: {{ 'working' if dns_test.rc == 0 else 'FAILED' }}"

@@ -1,0 +1,270 @@
+---
+# User Management Playbook for CCDC Incident Response
+# Manages user accounts during incidents - create emergency accounts, disable compromised users, etc.
+
+- name: User Management for Incident Response
+  hosts: all
+  become: true
+  gather_facts: true
+  
+  vars:
+    # Emergency user configuration
+    emergency_users:
+      - name: "ccdcir1"
+        password: "{{ vault_emergency_password_1 | default('ChangeMe2025!') }}"
+        groups: ["sudo", "wheel"]
+      - name: "ccdcir2"
+        password: "{{ vault_emergency_password_2 | default('ChangeMe2026!') }}"
+        groups: ["sudo", "wheel"]
+    
+    # Users to preserve (never disable/delete)
+    protected_users:
+      - root
+      - daemon
+      - bin
+      - sys
+      - sync
+      - games
+      - man
+      - lp
+      - mail
+      - news
+      - uucp
+      - proxy
+      - www-data
+      - backup
+      - list
+      - irc
+      - gnats
+      - nobody
+      - systemd-timesync
+      - systemd-network
+      - systemd-resolve
+      - ccdcir1
+      - ccdcir2
+      
+    # Default shell for new users
+    default_shell: /bin/bash
+    
+    # Log file for user management actions
+    user_mgmt_log: "/var/log/user_management.log"
+    
+  pre_tasks:
+    - name: Create user management log
+      file:
+        path: "{{ user_mgmt_log }}"
+        state: touch
+        mode: '0640'
+        
+    - name: Log playbook start
+      lineinfile:
+        path: "{{ user_mgmt_log }}"
+        line: "[{{ ansible_date_time.iso8601 }}] User management playbook started by {{ ansible_user_id }}"
+        
+  tasks:
+    # Emergency User Creation
+    - name: Create emergency user accounts
+      user:
+        name: "{{ item.name }}"
+        password: "{{ item.password | password_hash('sha512') }}"
+        groups: "{{ item.groups }}"
+        shell: "{{ default_shell }}"
+        create_home: true
+        state: present
+        update_password: always
+      loop: "{{ emergency_users }}"
+      register: emergency_user_creation
+      
+    - name: Add emergency users to sudoers with NOPASSWD
+      lineinfile:
+        path: /etc/sudoers.d/emergency_users
+        line: "{{ item.name }} ALL=(ALL) NOPASSWD:ALL"
+        create: true
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      loop: "{{ emergency_users }}"
+      
+    - name: Configure SSH keys for emergency users (if provided)
+      authorized_key:
+        user: "{{ item.name }}"
+        key: "{{ item.ssh_key }}"
+        state: present
+      loop: "{{ emergency_users }}"
+      when: item.ssh_key is defined
+      
+    # User Audit and Cleanup
+    - name: Get list of all users with shell access
+      shell: "awk -F: '$7 !~ /nologin|false/ && $3 >= 500 {print $1}' /etc/passwd"
+      register: shell_users
+      changed_when: false
+      
+    - name: Get list of users with sudo privileges
+      shell: |
+        {
+          grep -Po '^[^#]*\s+ALL=' /etc/sudoers 2>/dev/null | cut -d: -f1 || true
+          find /etc/sudoers.d -name "*" -exec grep -Po '^[^#]*\s+ALL=' {} \; 2>/dev/null | cut -d: -f1 || true
+        } | sort -u
+      register: sudo_users
+      changed_when: false
+      
+    - name: Display current user audit
+      debug:
+        msg:
+          - "Shell users found: {{ shell_users.stdout_lines }}"
+          - "Sudo users found: {{ sudo_users.stdout_lines }}"
+          - "Emergency users created: {{ emergency_users | map(attribute='name') | list }}"
+          
+    # Suspicious User Detection
+    - name: Find users with suspicious characteristics
+      shell: |
+        echo "=== USERS WITH UID 0 ==="
+        awk -F: '$3 == 0 {print $1}' /etc/passwd
+        echo "=== USERS WITH EMPTY PASSWORDS ==="
+        awk -F: '$2 == "" {print $1}' /etc/shadow 2>/dev/null || echo "Cannot read shadow file"
+        echo "=== RECENTLY CREATED USERS (last 7 days) ==="
+        find /home -maxdepth 1 -type d -ctime -7 -exec basename {} \; 2>/dev/null | grep -v '^home$' || echo "No recently created home directories"
+      register: suspicious_users
+      changed_when: false
+      
+    - name: Report suspicious users
+      debug:
+        var: suspicious_users.stdout_lines
+        
+    # Password Security
+    - name: Force password expiry for all non-protected users
+      shell: |
+        for user in $(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd); do
+          if [[ " {{ protected_users | join(' ') }} " != *" $user "* ]]; then
+            chage -d 0 "$user" 2>/dev/null && echo "Password expired for $user" || true
+          fi
+        done
+      register: password_expiry
+      when: force_password_reset | default(false)
+      
+    - name: Set password policies
+      lineinfile:
+        path: /etc/login.defs
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        backup: true
+      loop:
+        - { regexp: '^PASS_MAX_DAYS', line: 'PASS_MAX_DAYS 30' }
+        - { regexp: '^PASS_MIN_DAYS', line: 'PASS_MIN_DAYS 1' }
+        - { regexp: '^PASS_WARN_AGE', line: 'PASS_WARN_AGE 7' }
+        - { regexp: '^PASS_MIN_LEN', line: 'PASS_MIN_LEN 12' }
+        
+    # Session Management
+    - name: Kill sessions of disabled users
+      shell: |
+        for user in {{ users_to_disable | default([]) | join(' ') }}; do
+          pkill -KILL -u "$user" 2>/dev/null || true
+          echo "Killed sessions for user: $user"
+        done
+      register: session_kills
+      when: users_to_disable is defined and users_to_disable | length > 0
+      
+    # User Disabling (when specified)
+    - name: Disable specified user accounts
+      user:
+        name: "{{ item }}"
+        account_locked: true
+        expires: 1  # Set to expired
+      loop: "{{ users_to_disable | default([]) }}"
+      when: item not in protected_users
+      register: user_disabling
+      
+    - name: Log disabled users
+      lineinfile:
+        path: "{{ user_mgmt_log }}"
+        line: "[{{ ansible_date_time.iso8601 }}] DISABLED USER: {{ item }} on {{ inventory_hostname }}"
+      loop: "{{ users_to_disable | default([]) }}"
+      when: item not in protected_users
+      
+    # SSH Key Management
+    - name: Backup SSH authorized_keys files
+      shell: |
+        find /home -name ".ssh" -type d | while read ssh_dir; do
+          if [ -f "$ssh_dir/authorized_keys" ]; then
+            cp "$ssh_dir/authorized_keys" "$ssh_dir/authorized_keys.backup.$(date +%s)"
+            echo "Backed up: $ssh_dir/authorized_keys"
+          fi
+        done
+      register: ssh_backup
+      changed_when: false
+      
+    - name: Remove SSH keys for disabled users
+      file:
+        path: "/home/{{ item }}/.ssh/authorized_keys"
+        state: absent
+      loop: "{{ users_to_disable | default([]) }}"
+      when: 
+        - item not in protected_users
+        - remove_ssh_keys | default(true)
+        
+    # User Creation (when specified)
+    - name: Create new users
+      user:
+        name: "{{ item.name }}"
+        password: "{{ item.password | password_hash('sha512') }}"
+        groups: "{{ item.groups | default([]) }}"
+        shell: "{{ item.shell | default(default_shell) }}"
+        create_home: true
+        state: present
+      loop: "{{ users_to_create | default([]) }}"
+      register: user_creation
+      
+    - name: Set SSH keys for new users
+      authorized_key:
+        user: "{{ item.name }}"
+        key: "{{ item.ssh_key }}"
+        state: present
+      loop: "{{ users_to_create | default([]) }}"
+      when: item.ssh_key is defined
+      
+  post_tasks:
+    - name: Generate user management report
+      shell: |
+        {
+          echo "=== USER MANAGEMENT REPORT ==="
+          echo "Date: $(date)"
+          echo "Host: {{ inventory_hostname }}"
+          echo ""
+          echo "=== CURRENT SHELL USERS ==="
+          awk -F: '$7 !~ /nologin|false/ && $3 >= 500 {print $1 " (UID: " $3 ")"}' /etc/passwd
+          echo ""
+          echo "=== LOCKED ACCOUNTS ==="
+          passwd -Sa 2>/dev/null | grep " L " | awk '{print $1}' || echo "No locked accounts found"
+          echo ""
+          echo "=== SUDO USERS ==="
+          getent group sudo 2>/dev/null | cut -d: -f4 | tr ',' '\n' || echo "No sudo group"
+          getent group wheel 2>/dev/null | cut -d: -f4 | tr ',' '\n' || echo "No wheel group"
+          echo ""
+          echo "=== EMERGENCY USERS ==="
+          {% for user in emergency_users %}
+          id {{ user.name }} 2>/dev/null && echo "{{ user.name }}: ACTIVE" || echo "{{ user.name }}: NOT FOUND"
+          {% endfor %}
+        } > /tmp/user_report_{{ ansible_date_time.epoch }}.txt
+      register: user_report
+      changed_when: false
+      
+    - name: Fetch user report
+      fetch:
+        src: "/tmp/user_report_{{ ansible_date_time.epoch }}.txt"
+        dest: "./reports/{{ inventory_hostname }}-user-report-{{ ansible_date_time.epoch }}.txt"
+        flat: true
+        
+    - name: Log playbook completion
+      lineinfile:
+        path: "{{ user_mgmt_log }}"
+        line: "[{{ ansible_date_time.iso8601 }}] User management playbook completed on {{ inventory_hostname }}"
+        
+    - name: Display user management summary
+      debug:
+        msg:
+          - "=== USER MANAGEMENT COMPLETE ==="
+          - "Emergency users created: {{ emergency_users | length }}"
+          - "Users disabled: {{ users_to_disable | default([]) | length }}"
+          - "New users created: {{ users_to_create | default([]) | length }}"
+          - "SSH keys backed up and managed"
+          - "Report saved to ./reports/"
+          - "Check {{ user_mgmt_log }} for detailed logs"

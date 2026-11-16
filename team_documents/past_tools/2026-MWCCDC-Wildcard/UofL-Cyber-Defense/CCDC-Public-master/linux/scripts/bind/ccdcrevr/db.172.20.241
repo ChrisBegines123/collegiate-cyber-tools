@@ -1,0 +1,13 @@
+$TTL 86400
+@   IN  SOA ns1.ccdcteam01.public. admin.ccdcteam01.public. (
+            1         ; Serial
+            604800    ; Refresh
+            86400     ; Retry
+            2419200   ; Expire
+            86400 )   ; Negative Cache TTL
+;
+@       IN  NS      ns1.ccdcteam01.public.
+
+20      IN  PTR     splunk.ccdcteam01.public.
+30      IN  PTR     ecomm.ccdcteam01.public.
+40      IN  PTR     webmail.ccdcteam01.public.

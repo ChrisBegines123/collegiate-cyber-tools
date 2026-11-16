@@ -1,0 +1,21 @@
+---
+- name: Check if tripwire is installed and run install.yml if not
+  become: true
+  block:
+   - name: Check if tripwire is installed
+     ansible.builtin.shell:
+      cmd: command -v tripwire
+     register: tripwire_installed
+     ignore_errors: true
+
+   - name: Run install.yml if tripwire is not installed
+     include_tasks: install.yml
+     when: tripwire_installed.rc != 0
+
+- name: Initalize the database of tripwire
+  ansible.builtin.shell:
+    cmd: tripwire --init
+  become: true
+  register: tripwire_init
+  failed_when: triwire_init.rc != 0
+  changed_when: false

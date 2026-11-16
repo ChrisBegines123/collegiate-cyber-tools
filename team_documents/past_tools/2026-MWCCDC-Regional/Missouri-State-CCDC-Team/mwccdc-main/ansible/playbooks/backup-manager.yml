@@ -1,0 +1,24 @@
+- name: Create a backup of a specific host's configuration 
+  hosts: localhost 
+  vars: 
+    backup_folder: /root/backup 
+  tasks: 
+    - name: Create the backup 
+      community.general.archive:
+        path:
+          - /root/
+          - /etc/bind 
+          - /etc/cron*
+          - /etc/passwd
+          - /etc/group
+          - /etc/shadow
+          - /etc/sudoers*
+          - /etc/hosts
+          - /etc/hostname
+          - /etc/aliases
+          - /etc/systemd
+          - /etc/apt
+          # Include additional directiores for backup in this list. 
+        dest: "{{ backup_folder }}backup.tgz"
+        creates: "{{ backup_folder }}"
+        attributes: 600

@@ -1,0 +1,14 @@
+.cursor/
+*.pdf
+
+# Monarch runtime
+monarch/conf.json
+monarch/*.log
+monarch/__pycache__/
+
+# Python
+__pycache__/
+*.pyc
+
+# Test environment
+test/.env

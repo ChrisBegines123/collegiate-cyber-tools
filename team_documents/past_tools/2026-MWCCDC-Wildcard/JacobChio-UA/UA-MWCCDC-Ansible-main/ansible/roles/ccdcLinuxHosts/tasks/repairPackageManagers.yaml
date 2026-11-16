@@ -1,0 +1,27 @@
+---
+- name: write package manager repair script
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/distroRepair.sh
+    mode: '0750'
+    src: distroRepair.sh
+
+- name: write package manager repair script
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/apt.sh
+    mode: '0750'
+    src: apt.sh
+
+- name: write package manager repair script
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/dnf.sh
+    mode: '0750'
+    src: dnf.sh
+
+- name: run package manager repair script
+  ansible.builtin.command: /usr/local/sbin/distroRepair.sh
+  register: repair_output
+
+- name: print package manager repair output
+  ansible.builtin.debug:
+    var: repair_output.stdout_lines
+  when: repair_output.stdout is defined and repair_output.stdout != ""

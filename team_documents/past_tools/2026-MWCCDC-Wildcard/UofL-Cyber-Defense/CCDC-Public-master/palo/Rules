@@ -1,0 +1,87 @@
+###############################################################
+# 1. ENUMERATE ALL RULES
+###############################################################
+show running security-policy
+
+###############################################################
+# 2. ENABLE LOGGING ON ALL RULES (START + END)
+###############################################################
+configure
+set rulebase security rules <ruleName> log-start yes
+set rulebase security rules <ruleName> log-end yes
+commit
+exit
+
+###############################################################
+# 3. APPLY PROFILE GROUP TO ALL RULES
+###############################################################
+configure
+set rulebase security rules <ruleName> profile-setting group CCDC-Strict
+commit
+exit
+
+###############################################################
+# 4. CREATE A DEFAULT DENY RULE (IF MISSING)
+###############################################################
+configure
+set rulebase security rules Deny-All from any
+set rulebase security rules Deny-All to any
+set rulebase security rules Deny-All source any
+set rulebase security rules Deny-All destination any
+set rulebase security rules Deny-All application any
+set rulebase security rules Deny-All service any
+set rulebase security rules Deny-All action deny
+set rulebase security rules Deny-All log-end yes
+commit
+exit
+
+###############################################################
+# 5. CREATE ALLOW RULES FOR REQUIRED SERVICES
+###############################################################
+configure
+
+# Example: Allow internal servers outbound
+set rulebase security rules Allow-Servers from trust
+set rulebase security rules Allow-Servers to untrust
+set rulebase security rules Allow-Servers source [ Server-Debian Server-AD2019 ]
+set rulebase security rules Allow-Servers destination any
+set rulebase security rules Allow-Servers application any
+set rulebase security rules Allow-Servers service application-default
+set rulebase security rules Allow-Servers action allow
+set rulebase security rules Allow-Servers log-end yes
+set rulebase security rules Allow-Servers profile-setting group CCDC-Strict
+
+commit
+exit
+
+###############################################################
+# 6. BLOCK UNKNOWN APPLICATIONS
+###############################################################
+configure
+set rulebase security rules Block-Unknown from any
+set rulebase security rules Block-Unknown to any
+set rulebase security rules Block-Unknown application [ unknown-tcp unknown-udp ]
+set rulebase security rules Block-Unknown action deny
+set rulebase security rules Block-Unknown log-end yes
+commit
+exit
+
+###############################################################
+# 7. BLOCK HIGH-RISK APPLICATIONS
+###############################################################
+configure
+set rulebase security rules Block-Risky application [ tor bittorrent teamviewer ]
+set rulebase security rules Block-Risky action deny
+set rulebase security rules Block-Risky log-end yes
+commit
+exit
+
+###############################################################
+# 8. VERIFY RULE ORDER (VERY IMPORTANT)
+###############################################################
+show running security-policy
+
+# Ensure:
+# - Allow rules are ABOVE Deny-All
+# - Block-Unknown and Block-Risky are ABOVE general allow rules
+# - Deny-All is the last rule

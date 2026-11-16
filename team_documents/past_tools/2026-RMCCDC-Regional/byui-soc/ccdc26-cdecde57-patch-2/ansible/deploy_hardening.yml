@@ -1,0 +1,233 @@
+---
+# CCDC26 - Deploy Hardening Scripts Playbook
+#
+# Deploys the linux-scripts toolkit to all Linux hosts and runs hardening
+#
+# Usage:
+#   ansible-playbook -i inventory.ini deploy_hardening.yml
+#   ansible-playbook -i inventory.ini deploy_hardening.yml -e "run_full=true"
+#   ansible-playbook -i inventory.ini deploy_hardening.yml --limit web1,db1
+#
+
+- name: Deploy hardening scripts to Linux hosts
+  hosts: linux
+  become: yes
+  gather_facts: yes
+
+  vars:
+    toolkit_dest: "/opt/ccdc26"
+    default_repo_url: "https://github.com/byui-soc/ccdc26.git"
+    default_repo_branch: "main"
+    run_full: false
+    run_services: false
+    run_monitoring: false
+
+  tasks:
+    - name: Ensure git and unzip are installed (Debian/Ubuntu)
+      apt:
+        name:
+          - git
+          - unzip
+        state: present
+        update_cache: yes
+      when: ansible_pkg_mgr == 'apt'
+
+    - name: Ensure git and unzip are installed (RHEL/CentOS/Fedora)
+      shell: |
+        if command -v dnf &>/dev/null; then
+          dnf install -y git unzip
+        elif command -v yum &>/dev/null; then
+          yum install -y git unzip
+        fi
+      when: ansible_os_family == 'RedHat'
+      ignore_errors: yes
+
+    - name: Create toolkit directory
+      file:
+        path: "{{ toolkit_dest }}"
+        state: directory
+        mode: '0755'
+
+    - name: Clone or update repository
+      git:
+        repo: "{{ repo_url | default(default_repo_url) }}"
+        dest: "{{ toolkit_dest }}"
+        version: "{{ repo_branch | default(default_repo_branch) }}"
+        update: yes
+        force: yes
+      register: git_result
+      ignore_errors: yes
+
+    - name: Download archive if git fails
+      get_url:
+        url: "{{ (repo_url | default(default_repo_url)) | replace('.git', '') }}/archive/refs/heads/{{ repo_branch | default(default_repo_branch) }}.zip"
+        dest: "/tmp/ccdc26.zip"
+        mode: '0644'
+      when: git_result is failed
+      register: download_result
+      ignore_errors: yes
+
+    - name: Extract archive if git fails
+      shell: |
+        cd /tmp
+        unzip -o ccdc26.zip
+        rm -rf {{ toolkit_dest }}/*
+        cp -r ccdc26-{{ repo_branch | default(default_repo_branch) }}/* {{ toolkit_dest }}/
+        rm -rf ccdc26-{{ repo_branch | default(default_repo_branch) }} ccdc26.zip
+      when: git_result is failed and download_result is succeeded
+      ignore_errors: yes
+
+    - name: Check if linux-scripts exists
+      stat:
+        path: "{{ toolkit_dest }}/linux-scripts"
+      register: scripts_dir
+
+    - name: Make all scripts executable
+      shell: |
+        find {{ toolkit_dest }}/linux-scripts -name "*.sh" -exec chmod +x {} \;
+      changed_when: true
+      when: scripts_dir.stat.exists
+
+    - name: Run full hardening (if enabled)
+      shell: |
+        cd {{ toolkit_dest }}/linux-scripts
+        if [ -f ./hardening/full-harden.sh ]; then
+          echo "7" | bash ./hardening/full-harden.sh
+        else
+          echo "ERROR: full-harden.sh not found"
+          exit 1
+        fi
+      when: run_full | bool
+      register: full_harden_result
+      ignore_errors: yes
+
+    - name: Display full harden output
+      debug:
+        var: full_harden_result.stdout_lines
+      when: run_full | bool and full_harden_result is defined
+
+    - name: Run service hardening (if enabled)
+      shell: |
+        cd {{ toolkit_dest }}/linux-scripts
+        if [ -f ./services/harden-all.sh ]; then
+          echo "1" | bash ./services/harden-all.sh
+        else
+          echo "ERROR: harden-all.sh not found"
+          exit 1
+        fi
+      when: run_services | bool
+      register: services_result
+      ignore_errors: yes
+
+    - name: Deploy monitoring scripts (if enabled)
+      shell: |
+        cd {{ toolkit_dest }}/linux-scripts
+        if [ -f ./monitoring/deploy-monitoring.sh ]; then
+          nohup bash ./monitoring/deploy-monitoring.sh > /dev/null 2>&1 &
+        else
+          echo "ERROR: deploy-monitoring.sh not found"
+          exit 1
+        fi
+      when: run_monitoring | bool
+      async: 10
+      poll: 0
+      ignore_errors: yes
+
+    - name: Display toolkit location
+      debug:
+        msg: |
+          Toolkit deployed to: {{ toolkit_dest }}/linux-scripts/
+          
+          To run hardening manually:
+            cd {{ toolkit_dest }}/linux-scripts
+            sudo ./hardening/full-harden.sh
+          
+          To run service hardening:
+            sudo ./services/harden-all.sh
+          
+          To hunt for persistence:
+            sudo ./persistence-hunting/full-hunt.sh
+
+
+- name: Deploy hardening scripts to Windows hosts
+  hosts: windows
+  gather_facts: yes
+
+  vars:
+    toolkit_dest: "C:\\ccdc26"
+    default_repo_url: "https://github.com/byui-soc/ccdc26.git"
+    default_repo_branch: "main"
+    run_full: false
+
+  tasks:
+    - name: Check if git is available
+      win_shell: |
+        $git = Get-Command git -ErrorAction SilentlyContinue
+        if ($git) { Write-Output "available" } else { Write-Output "not_available" }
+      register: git_check
+      changed_when: false
+
+    - name: Clone repository using git (if available)
+      win_shell: |
+        if (Test-Path "{{ toolkit_dest }}") {
+          cd "{{ toolkit_dest }}"
+          git pull origin {{ repo_branch | default(default_repo_branch) }}
+        } else {
+          git clone -b {{ repo_branch | default(default_repo_branch) }} {{ repo_url | default(default_repo_url) }} "{{ toolkit_dest }}"
+        }
+      when: git_check.stdout == "available"
+      register: git_result
+      ignore_errors: yes
+
+    - name: Download and extract ZIP archive (fallback if git not available)
+      win_shell: |
+        $zipUrl = "{{ (repo_url | default(default_repo_url)) | replace('.git', '') }}/archive/{{ repo_branch | default(default_repo_branch) }}.zip"
+        $zipPath = "$env:TEMP\ccdc26.zip"
+        $extractPath = "{{ toolkit_dest }}"
+        
+        # Download
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath
+        
+        # Extract
+        if (Test-Path $extractPath) {
+          Remove-Item $extractPath -Recurse -Force
+        }
+        Expand-Archive -Path $zipPath -DestinationPath (Split-Path $extractPath) -Force
+        
+        # Rename extracted folder
+        $extractedFolder = Join-Path (Split-Path $extractPath) "ccdc26-{{ repo_branch | default(default_repo_branch) }}"
+        if (Test-Path $extractedFolder) {
+          Move-Item $extractedFolder $extractPath -Force
+        }
+        
+        # Cleanup
+        Remove-Item $zipPath -Force
+        Write-Output "Extracted successfully"
+      when: git_check.stdout == "not_available" or git_result is failed
+      ignore_errors: yes
+
+    - name: Run full hardening (if enabled)
+      win_shell: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        & "{{ toolkit_dest }}\windows-scripts\hardening\Full-Harden.ps1" -q
+      when: run_full | bool
+      register: win_harden_result
+      ignore_errors: yes
+
+    - name: Display Windows harden output
+      debug:
+        var: win_harden_result.stdout_lines
+      when: run_full | bool and win_harden_result is defined
+
+    - name: Display toolkit location
+      debug:
+        msg: |
+          Toolkit deployed to: {{ toolkit_dest }}\windows-scripts\
+          
+          To run hardening manually (as Admin):
+            cd {{ toolkit_dest }}\windows-scripts\hardening
+            .\Full-Harden.ps1
+          
+          For Domain Controllers:
+            .\AD-Harden.ps1

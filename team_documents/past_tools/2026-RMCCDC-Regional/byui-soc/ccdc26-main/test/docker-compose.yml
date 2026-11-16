@@ -1,0 +1,87 @@
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    container_name: ccdc-controller
+    hostname: controller
+    volumes:
+      - ..:/opt/ccdc26
+    networks:
+      testnet:
+        ipv4_address: 10.99.0.10
+    depends_on:
+      - ecom
+      - webmail
+      - splunk
+      - workstation
+    stdin_open: true
+    tty: true
+
+  ecom:
+    build:
+      context: .
+      dockerfile: Dockerfile.ubuntu
+    container_name: ccdc-ecom
+    hostname: ecom
+    networks:
+      testnet:
+        ipv4_address: 10.99.0.11
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - AUDIT_CONTROL
+      - AUDIT_WRITE
+
+  webmail:
+    build:
+      context: .
+      dockerfile: Dockerfile.fedora
+    container_name: ccdc-webmail
+    hostname: webmail
+    networks:
+      testnet:
+        ipv4_address: 10.99.0.12
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - AUDIT_CONTROL
+      - AUDIT_WRITE
+
+  splunk:
+    build:
+      context: .
+      dockerfile: Dockerfile.rocky
+    container_name: ccdc-splunk
+    hostname: splunk
+    networks:
+      testnet:
+        ipv4_address: 10.99.0.13
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - AUDIT_CONTROL
+      - AUDIT_WRITE
+
+  workstation:
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    container_name: ccdc-workstation
+    hostname: workstation
+    networks:
+      testnet:
+        ipv4_address: 10.99.0.14
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - AUDIT_CONTROL
+      - AUDIT_WRITE
+
+networks:
+  testnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.99.0.0/24
+          gateway: 10.99.0.1

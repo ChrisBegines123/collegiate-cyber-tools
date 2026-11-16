@@ -1,0 +1,58 @@
+--- 
+- name: workstation tasks
+  hosts: workstation  
+  become: true
+
+  tasks:
+    - name: set wkst hostname
+      shell: echo "wkst01.{{ domain }}" > /etc/hostname
+      args:
+        executable: /bin/bash
+
+    - name: set env 
+      shell: |
+        echo "ZDS_TYPE=wkst" >> /etc/profile
+        echo "wkst" > /var/zds/zds_type
+      args:
+        executable: /bin/bash 
+
+    - name: refresh repos
+      package:
+        update_cache: true          
+
+    - name: install packages
+      package: 
+        name:
+          - git
+          - curl
+          - vim
+          - snmpd
+          - nmap
+          - ncat
+          - tcpdump
+          - auditd
+          - docker.io
+          - chrony
+          - xdp-tools
+          - lynis
+          - lsof
+          - tmux
+          - gdb
+          - net-tools
+          - htop
+        state: latest
+
+    - name: reinstall packages
+      shell: |
+        apt-get install --reinstall -y libpam-runtime openssh-server coreutils
+        apt-get install --reinstall -y -o Dpkg::Options::="--force-confmiss" $(dpkg -S /etc/pam.d/\* | cut -d ':' -f 1)
+      args:
+        executable: /bin/bash
+
+    - name: disable firewall
+      shell: |
+        systemctl stop --now ufw
+        systemctl disable ufw
+      args:
+        executable: /bin/bash
+

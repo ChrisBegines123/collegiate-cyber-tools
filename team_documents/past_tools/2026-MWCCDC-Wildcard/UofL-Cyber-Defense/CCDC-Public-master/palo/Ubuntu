@@ -1,0 +1,86 @@
+###############################################################
+# 1. UPDATE & CLEAN SYSTEM
+###############################################################
+sudo apt update && sudo apt upgrade -y
+sudo apt autoremove -y
+
+###############################################################
+# 2. INSTALL ESSENTIAL SECURITY TOOLS
+###############################################################
+sudo apt install -y \
+  nmap \
+  net-tools \
+  htop \
+  tcpdump \
+  whois \
+  traceroute \
+  curl \
+  wget \
+  auditd \
+  ufw
+
+###############################################################
+# 3. ENABLE AUDITD (LOG EVERYTHING IMPORTANT)
+###############################################################
+sudo systemctl enable --now auditd
+
+###############################################################
+# 4. HARDEN SSH CLIENT (YOUR WORKSTATION)
+###############################################################
+sudo sed -i 's/#   ForwardAgent no/ForwardAgent no/' /etc/ssh/ssh_config
+sudo sed -i 's/#   PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/ssh_config
+
+###############################################################
+# 5. FIREWALL LOCKDOWN (UFW)
+###############################################################
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Allow only what YOU need
+sudo ufw allow 22/tcp
+sudo ufw allow 443/tcp
+
+sudo ufw enable
+
+###############################################################
+# 6. DISABLE UNUSED SERVICES
+###############################################################
+sudo systemctl disable --now cups
+sudo systemctl disable --now avahi-daemon
+sudo systemctl disable --now bluetooth
+
+###############################################################
+# 7. CHECK FOR SUSPICIOUS USERS
+###############################################################
+cut -d: -f1 /etc/passwd
+
+###############################################################
+# 8. CHECK FOR SUSPICIOUS PROCESSES
+###############################################################
+ps aux --sort=-%cpu | head
+
+###############################################################
+# 9. CHECK FOR SUSPICIOUS NETWORK CONNECTIONS
+###############################################################
+sudo ss -tulnp
+
+###############################################################
+# 10. LOGGING & JOURNAL RETENTION
+###############################################################
+sudo mkdir -p /etc/systemd/journald.conf.d
+echo -e "[Journal]\nSystemMaxUse=500M" | sudo tee /etc/systemd/journald.conf.d/size.conf
+sudo systemctl restart systemd-journald
+
+###############################################################
+# 11. BASH HISTORY PROTECTION
+###############################################################
+chmod 700 ~/.bash_history
+export HISTCONTROL=ignoredups:erasedups
+export HISTSIZE=5000
+export HISTFILESIZE=10000
+
+###############################################################
+# 12. OPTIONAL: INSTALL FAIL2BAN
+###############################################################
+sudo apt install -y fail2ban
+sudo systemctl enable --now fail2ban

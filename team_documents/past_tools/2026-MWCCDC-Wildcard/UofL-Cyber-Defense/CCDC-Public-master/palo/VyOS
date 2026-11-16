@@ -1,0 +1,38 @@
+WAIT FOR MICHAEL TO SAY GO AHEAD!!!!
+
+
+configure
+set system login user vyos authentication plaintext-password <new_password>
+commit
+save
+exit
+
+
+//NMAP
+sudo masscan <target-subnet-or-IP> -p0-65535 --rate=500 --wait=10
+  //Screenshot terminal w/ commands and initial output showing ports
+
+sudo nmap -sS -sV -T4 -Pn -p <open-ports> <target-IPs>
+  //Screenshot terminal w/ commands and output showing service name and version info
+
+sudo nmap -sU -T4 --top-ports 10 <target-IPs>
+  //Screenshot terminal w/ commands and any dicovered UDP services - even if non are found
+
+
+//Tools Not Installed
+`run bash` - enter operational mode
+`vyos@vyos:~$ which apt` - check if `apt` exists
+- If nothing returns, then installs are blocked
+- Otherwise, continue
+`sudo apt update` - update package list
+`sudo apt install nmap` - Install Nmap
+`sudo apt install masscan` - Install masscan
+`nmap --version` - Verify that nmap is installed
+`masscan --version` - Verify that masscan is installed
+
+
+//Table Example
+### Required table to build
+| Host IP | Port | Protocol | Service | Needed Externally? | Recommendation       |
+| ------- | ---- | -------- | ------- | ------------------ | -------------------- |
+| ...     | ...  | ...      | ...     | <Yes/No>           | \<What will be done> |

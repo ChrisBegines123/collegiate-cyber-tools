@@ -1,0 +1,13 @@
+https://github.com/rusec/ToolBox
+https://github.com/kennethsteuart/MACCDC26
+https://github.com/CyberLions/CCDC
+https://github.com/luccdc/e-scripts
+https://github.com/luccdc/jj
+https://github.com/luccdc/tools
+https://github.com/Cybersecurity-Student-Association/CCDC-2026
+https://github.com/CNU-CCDC/CNU-CCDC-2026
+https://github.com/UMBCCyberDawgs/maccdc26
+https://github.com/KingAress/TOWSON_CCDC2026
+https://github.com/mingusb/maccdc-2026-blue-team
+https://github.com/CNU-CCDC/CNU-CCDC-2026
+

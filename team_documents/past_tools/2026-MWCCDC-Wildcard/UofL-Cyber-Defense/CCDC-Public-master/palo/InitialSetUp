@@ -1,0 +1,182 @@
+############################################
+# CCDC PALO ALTO MASTER SCRIPT (CLI)
+# Mode: defensive, time-pressed, competition-ready
+############################################
+
+############################################
+# 0. ENUMERATE CURRENT ADMINS
+############################################
+> show admins all
+
+
+############################################
+# 1. CREATE NEW SECURE ADMIN, REMOVE OLD
+############################################
+> configure
+
+# Delete old/unknown admin (replace [OldAccount])
+# (Run show admins all first to confirm names)
+# delete mgt-config users [OldAccount]
+
+# Create new admin (replace [NewAdmin])
+# Use the literal word "password" here; it will prompt you
+set mgt-config users [NewAdmin] password
+set mgt-config users [NewAdmin] permissions role-based superuser yes
+
+commit
+exit
+
+# Verify
+> show admins all
+
+
+############################################
+# 2. RESET EXISTING ADMIN PASSWORD (TIME-PRESSED OPTION)
+############################################
+> configure
+# Use when you must keep an existing account but rotate password quickly
+# Again, use the literal word "password" to be prompted
+set mgt-config users [ExistingAdmin] password
+commit
+exit
+
+
+############################################
+# 3. KICK ALL ACTIVE ADMIN SESSIONS
+############################################
+> delete admin-sessions
+
+
+############################################
+# 4. SET STATIC MGMT IP + RESTRICT PERMITTED IP
+############################################
+> configure
+
+# Set device to static (fill in IP, netmask, gateway)
+set deviceconfig system type static
+set deviceconfig system ip-address X.X.X.X
+set deviceconfig system netmask 255.255.255.0
+set deviceconfig system default-gateway X.X.X.X
+
+# Restrict which IP can manage the firewall (your Ubuntu workstation, etc.)
+set deviceconfig system permitted-ip X.X.X.X
+
+commit
+exit
+
+
+############################################
+# 5. HARDEN MANAGEMENT SERVICES
+############################################
+> show system services
+
+> configure
+
+# Disable insecure/unused services
+set deviceconfig system service disable-telnet yes
+set deviceconfig system service disable-snmp yes
+set deviceconfig system service disable-userid-service yes
+set deviceconfig system service disable-userid-syslog-listener-ssl yes
+
+# If you are NOT using HTTPS for mgmt, do NOT disable it.
+# If you are using SSH only, you may choose to disable HTTPS:
+# set deviceconfig system service disable-https yes
+
+# If SSH is NOT allowed, you can disable it:
+# set deviceconfig system service disable-ssh yes
+
+commit
+exit
+
+
+############################################
+# 6. NTP & DNS CONFIGURATION
+############################################
+> configure
+
+# NTP (example: Debian server as primary, Google as secondary)
+set deviceconfig system ntp-servers primary-ntp-server ntp-server-address <Debian-IP>
+set deviceconfig system ntp-servers primary-ntp-server ntp-server-auth-type none
+
+set deviceconfig system ntp-servers secondary-ntp-server ntp-server-address time.google.com
+set deviceconfig system ntp-servers secondary-ntp-server ntp-server-auth-type none
+
+# DNS (example: AD server as primary, 8.8.8.8 as secondary)
+set deviceconfig system dns-setting servers primary <AD2019-IP>
+set deviceconfig system dns-setting servers secondary 8.8.8.8
+
+commit
+exit
+
+
+############################################
+# 7. SYSTEM AUDIT / QUICK HEALTH CHECK
+############################################
+> show system info
+> show system environmentals
+> show system disk-space
+> show admins
+> show config audit-logs
+
+
+############################################
+# 8. BACKUP RUNNING CONFIG VIA SCP
+############################################
+# Replace admin, target IP, and path
+> scp export configuration from running-config.xml to admin@<SCP-Target>:/path/running-config.xml
+
+
+############################################
+# 9. SOFTWARE & CONTENT UPDATES (IF ALLOWED)
+############################################
+# PAN-OS base + target (example versions)
+> request system software check
+> request system software download version <baseVersion>
+> request system software install version <baseVersion>
+
+> request system software download version <targetVersion>
+> request system software install version <targetVersion>
+
+# Reboot after install if required
+> request restart system
+
+# Content updates
+> request content upgrade check
+> request content upgrade download latest
+> request content upgrade install version latest
+
+
+############################################
+# 10. ADDRESS OBJECTS & EXAMPLE SECURITY RULE
+############################################
+> configure
+
+# Address objects (example: Debian server + AD server)
+set address-object Server-Debian ip-netmask <Debian-IP>/32
+set address-object Server-AD2019 ip-netmask <AD2019-IP>/32
+
+# Example security rule (uncomment and adapt as needed)
+# set rulebase security rules Allow-Servers from trust
+# set rulebase security rules Allow-Servers to untrust
+# set rulebase security rules Allow-Servers source any
+# set rulebase security rules Allow-Servers destination [ Server-Debian Server-AD2019 ]
+# set rulebase security rules Allow-Servers application any
+# set rulebase security rules Allow-Servers service application-default
+# set rulebase security rules Allow-Servers action allow
+
+commit
+exit
+
+
+############################################
+# 11. OPTIONAL: PULL TEAM SCRIPTS (IF ALLOWED)
+############################################
+# Palo Alto hardening pack
+# > wget -qO- uoflcd.github.io/palo | bash
+# or
+# > curl -sLo- uoflcd.github.io/palo | bash
+
+# Linux scripts pack (run on Linux, not on PAN)
+# wget -qO- uoflcd.github.io/lin | bash
+# or
+# curl -sLo- uoflcd.github.io/lin | bash

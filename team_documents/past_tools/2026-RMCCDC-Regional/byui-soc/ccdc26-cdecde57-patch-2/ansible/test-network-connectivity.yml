@@ -1,0 +1,290 @@
+---
+# CCDC26 - Network Connectivity Test Playbook
+#
+# Tests network connectivity between Linux and Windows hosts
+# Documents firewall requirements and identifies connectivity issues
+#
+# Usage:
+#   ansible-playbook -i inventory.ini test-network-connectivity.yml
+#
+
+- name: Test network connectivity - Linux hosts
+  hosts: linux
+  gather_facts: yes
+  become: no
+
+  vars:
+    windows_subnet: "172.20.240.0/24"
+    linux_subnet: "172.20.242.0/24"
+
+  tasks:
+    - name: Display network information
+      debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          IP: {{ ansible_default_ipv4.address | default('Unknown') }}
+          Subnet: {{ linux_subnet }}
+
+    - name: Test connectivity to Windows hosts
+      shell: |
+        for ip in 172.20.240.100 172.20.240.101 172.20.240.102 172.20.240.104; do
+          if timeout 2 ping -c 1 -W 1 $ip >/dev/null 2>&1; then
+            echo "$ip: PING OK"
+          else
+            echo "$ip: PING FAILED"
+          fi
+        done
+      register: ping_windows
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Test WinRM port connectivity to Windows hosts
+      shell: |
+        for ip in 172.20.240.100 172.20.240.101 172.20.240.102 172.20.240.104; do
+          if timeout 2 bash -c "echo > /dev/tcp/$ip/5985" 2>/dev/null; then
+            echo "$ip:5985: PORT OPEN"
+          elif nc -zv -w 2 $ip 5985 2>&1 | grep -q "succeeded\|open"; then
+            echo "$ip:5985: PORT OPEN"
+          else
+            echo "$ip:5985: PORT CLOSED/BLOCKED"
+          fi
+        done
+      register: winrm_test
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Display connectivity results
+      debug:
+        msg: |
+          === Connectivity Test Results for {{ inventory_hostname }} ===
+          
+          Ping Tests (Windows hosts):
+          {{ ping_windows.stdout_lines | join('\n') }}
+          
+          WinRM Port Tests (5985):
+          {{ winrm_test.stdout_lines | join('\n') }}
+          
+          === Analysis ===
+          {% if 'FAILED' in ping_windows.stdout %}
+          ⚠️  PING FAILURES DETECTED
+          Possible causes:
+          1. Cisco FTD firewall blocking ICMP from {{ linux_subnet }} to {{ windows_subnet }}
+          2. Windows Firewall blocking ICMP
+          3. Network routing issues
+          {% endif %}
+          
+          {% if 'CLOSED' in winrm_test.stdout or 'BLOCKED' in winrm_test.stdout %}
+          ⚠️  WINRM PORT BLOCKED
+          Required actions:
+          1. Run Setup-WinRM-Ansible.ps1 on Windows hosts
+          2. Configure Cisco FTD to allow TCP 5985 from {{ linux_subnet }} to {{ windows_subnet }}
+          3. Verify Windows Firewall allows {{ linux_subnet }}
+          {% endif %}
+
+    - name: Test connectivity to Linux hosts (same subnet)
+      shell: |
+        for ip in 172.20.242.20 172.20.242.30 172.20.242.38 172.20.242.40; do
+          if [ "$ip" != "{{ ansible_default_ipv4.address | default('') }}" ]; then
+            if timeout 2 ping -c 1 -W 1 $ip >/dev/null 2>&1; then
+              echo "$ip: PING OK"
+            else
+              echo "$ip: PING FAILED"
+            fi
+          fi
+        done
+      register: ping_linux
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Display Linux-to-Linux connectivity
+      debug:
+        msg: |
+          Linux-to-Linux Connectivity:
+          {{ ping_linux.stdout_lines | join('\n') }}
+
+
+- name: Test network connectivity - Windows hosts
+  hosts: windows
+  gather_facts: yes
+
+  vars:
+    windows_subnet: "172.20.240.0/24"
+    linux_subnet: "172.20.242.0/24"
+
+  tasks:
+    - name: Display network information
+      debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          IP: {{ ansible_default_ipv4.address | default('Unknown') }}
+          Subnet: {{ windows_subnet }}
+
+    - name: Test connectivity to Linux hosts
+      win_shell: |
+        $results = @()
+        $ips = @("172.20.242.20", "172.20.242.30", "172.20.242.38", "172.20.242.40")
+        foreach ($ip in $ips) {
+          $ping = Test-Connection -ComputerName $ip -Count 1 -Quiet -ErrorAction SilentlyContinue
+          if ($ping) {
+            $results += "$ip : PING OK"
+          } else {
+            $results += "$ip : PING FAILED"
+          }
+        }
+        $results -join "`n"
+      register: ping_linux
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Test SSH port connectivity to Linux hosts
+      win_shell: |
+        $results = @()
+        $ips = @("172.20.242.20", "172.20.242.30", "172.20.242.38", "172.20.242.40")
+        foreach ($ip in $ips) {
+          $tcpClient = New-Object System.Net.Sockets.TcpClient
+          try {
+            $tcpClient.Connect($ip, 22)
+            $tcpClient.Close()
+            $results += "$ip :22: PORT OPEN"
+          } catch {
+            $results += "$ip :22: PORT CLOSED/BLOCKED"
+          }
+        }
+        $results -join "`n"
+      register: ssh_test
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Check WinRM service status
+      win_shell: |
+        $service = Get-Service -Name WinRM -ErrorAction SilentlyContinue
+        if ($service) {
+          "WinRM Service: $($service.Status)"
+        } else {
+          "WinRM Service: NOT INSTALLED"
+        }
+      register: winrm_status
+      changed_when: false
+
+    - name: Check WinRM firewall rules
+      win_shell: |
+        $rules = Get-NetFirewallRule -Name "*WinRM*" -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq $true }
+        if ($rules) {
+          $ruleInfo = $rules | ForEach-Object {
+            $addressFilter = Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $_
+            "$($_.DisplayName): RemoteAddress=$($addressFilter.RemoteAddress)"
+          }
+          $ruleInfo -join "`n"
+        } else {
+          "No WinRM firewall rules found"
+        }
+      register: winrm_firewall
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Display connectivity results
+      debug:
+        msg: |
+          === Connectivity Test Results for {{ inventory_hostname }} ===
+          
+          Ping Tests (Linux hosts):
+          {{ ping_linux.stdout_lines | join('\n') }}
+          
+          SSH Port Tests (22):
+          {{ ssh_test.stdout_lines | join('\n') }}
+          
+          WinRM Service:
+          {{ winrm_status.stdout }}
+          
+          WinRM Firewall Rules:
+          {{ winrm_firewall.stdout_lines | join('\n') }}
+          
+          === Analysis ===
+          {% if 'FAILED' in ping_linux.stdout %}
+          ⚠️  PING FAILURES DETECTED
+          Possible causes:
+          1. Palo Alto firewall blocking ICMP from {{ windows_subnet }} to {{ linux_subnet }}
+          2. Linux firewall blocking ICMP
+          3. Network routing issues
+          {% endif %}
+          
+          {% if 'NOT INSTALLED' in winrm_status.stdout or 'Stopped' in winrm_status.stdout %}
+          ⚠️  WINRM NOT RUNNING
+          Required action: Run Setup-WinRM-Ansible.ps1 on this host
+          {% endif %}
+          
+          {% if 'No WinRM firewall rules' in winrm_firewall.stdout %}
+          ⚠️  WINRM FIREWALL NOT CONFIGURED
+          Required action: Run Setup-WinRM-Ansible.ps1 to create firewall rules
+          {% endif %}
+
+
+- name: Network connectivity summary and recommendations
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Display network architecture
+      debug:
+        msg: |
+          ============================================
+          CCDC26 Network Architecture
+          ============================================
+          
+          Linux Zone: 172.20.242.0/24
+            - Ubuntu Ecom: 172.20.242.30
+            - Fedora Webmail: 172.20.242.40
+            - Splunk Server: 172.20.242.20
+            - Ubuntu Workstation: 172.20.242.38 (DHCP)
+            - Gateway: Palo Alto (172.16.101.254)
+          
+          Windows Zone: 172.20.240.0/24
+            - AD/DNS Server: 172.20.240.102
+            - Web Server: 172.20.240.101
+            - FTP Server: 172.20.240.104
+            - Win11 Workstation: 172.20.240.100
+            - Gateway: Cisco FTD (172.16.102.254)
+          
+          ============================================
+          Required Firewall Rules
+          ============================================
+          
+          Cisco FTD (Windows Zone Gateway):
+            ALLOW: 172.20.242.0/24 → 172.20.240.0/24
+              - TCP 5985 (WinRM)
+              - TCP 22 (SSH, if needed)
+              - ICMP (ping)
+          
+          Palo Alto (Linux Zone Gateway):
+            ALLOW: 172.20.240.0/24 → 172.20.242.0/24
+              - TCP 22 (SSH)
+              - ICMP (ping)
+          
+          Windows Firewall (each Windows host):
+            ALLOW: 172.20.242.0/24 → This host
+              - TCP 5985 (WinRM)
+              - Configured by: Setup-WinRM-Ansible.ps1
+          
+          ============================================
+          Troubleshooting Steps
+          ============================================
+          
+          1. If Linux cannot ping Windows:
+             - Check Cisco FTD firewall rules
+             - Verify Windows Firewall allows Linux subnet
+             - Test: ping from Linux to Windows IP
+          
+          2. If Ansible cannot connect to Windows:
+             - Run Setup-WinRM-Ansible.ps1 on Windows host
+             - Verify WinRM service is running: Get-Service WinRM
+             - Test: ansible windows -i inventory.ini -m win_ping
+          
+          3. If Windows cannot ping Linux:
+             - Check Palo Alto firewall rules
+             - Verify Linux firewall allows Windows subnet
+             - Test: ping from Windows to Linux IP
+          
+          4. Network routing verification:
+             - Linux: ip route show
+             - Windows: route print
+             - VyOS: show ip route

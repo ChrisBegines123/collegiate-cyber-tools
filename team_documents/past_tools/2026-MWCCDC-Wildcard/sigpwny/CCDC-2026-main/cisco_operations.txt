@@ -1,0 +1,15 @@
+show access-list | grep x.x.x.x
+show conn all 
+show conn all | grep x.x.x.x
+
+show running-config
+show access-list
+show access-control-config
+show interface ip brief
+show nameif
+show running-config user
+show running-config nat
+show running-config http
+show running-config ssh
+show route 
+show conn all

@@ -1,0 +1,288 @@
+` ============================================================================= `
+` CCDC26 - LINUX THREAT DETECTION QUERIES                                     `
+` Paste these directly into Splunk Search                                      `
+` ============================================================================= `
+
+
+` --------------------------------------------------------------------------- `
+` SSH / AUTHENTICATION ATTACKS                                                 `
+` --------------------------------------------------------------------------- `
+
+### SSH Brute Force Detection
+### Description: Detects multiple failed SSH password attempts grouped by source IP
+### MITRE ATT&CK: T1110.001 - Brute Force: Password Guessing
+### Severity: HIGH
+index=linux-security sourcetype=linux_secure "Failed password" earliest=-15m
+| rex "Failed password for (?:invalid user )?(?<target_user>\S+) from (?<src_ip>\d+\.\d+\.\d+\.\d+)"
+| stats count as failures dc(target_user) as targeted_users values(target_user) as users by src_ip, host
+| where failures > 10
+| sort -failures
+| table src_ip, host, failures, targeted_users, users
+
+### Successful SSH Login After Failed Attempts
+### Description: Detects successful SSH authentication following brute force attempts from the same IP
+### MITRE ATT&CK: T1110 - Brute Force
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_secure ("Failed password" OR "Accepted password" OR "Accepted publickey") earliest=-1h
+| rex "(?:Failed password for (?:invalid user )?|Accepted (?:password|publickey) for )(?<target_user>\S+) from (?<src_ip>\d+\.\d+\.\d+\.\d+)"
+| eval status=if(match(_raw, "Accepted"), "success", "failure")
+| stats count(eval(status="failure")) as failures count(eval(status="success")) as successes latest(eval(if(status="success",_time,null()))) as last_success by src_ip, target_user, host
+| where failures > 3 AND successes > 0
+| convert ctime(last_success)
+| sort -failures
+| table src_ip, target_user, host, failures, successes, last_success
+
+### SSH Login from Non-RFC1918 IPs
+### Description: Detects SSH logins from external/unexpected IP addresses
+### MITRE ATT&CK: T1078 - Valid Accounts
+### Severity: HIGH
+index=linux-security sourcetype=linux_secure ("Accepted password" OR "Accepted publickey") earliest=-24h
+| rex "Accepted (?:password|publickey) for (?<user>\S+) from (?<src_ip>\d+\.\d+\.\d+\.\d+)"
+| where NOT match(src_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.)")
+| table _time, host, user, src_ip
+| sort -_time
+
+### SSH Root Login
+### Description: Detects direct root SSH logins which should be disabled
+### MITRE ATT&CK: T1078.003 - Valid Accounts: Local Accounts
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_secure "Accepted" "for root" earliest=-24h
+| rex "Accepted (?<method>\S+) for root from (?<src_ip>\d+\.\d+\.\d+\.\d+)"
+| table _time, host, method, src_ip
+| sort -_time
+
+### SSH Login with Paramiko (Automated/Malware)
+### Description: Detects SSH connections using the Paramiko Python library, commonly used by automated attack tools
+### MITRE ATT&CK: T1021.004 - Remote Services: SSH
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_secure "paramiko" earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` PRIVILEGE ESCALATION / SUDO ABUSE                                            `
+` --------------------------------------------------------------------------- `
+
+### Sudo Commands from Unexpected Users
+### Description: Detects sudo usage -- review for unexpected users or suspicious commands
+### MITRE ATT&CK: T1548.003 - Abuse Elevation Control Mechanism: Sudo and Sudo Caching
+### Severity: MEDIUM
+index=linux-security sourcetype=linux_secure "sudo:" NOT "pam_unix" earliest=-4h
+| rex "sudo:\s+(?<sudo_user>\S+)\s+:\s+.*COMMAND=(?<command>.*)"
+| where isnotnull(sudo_user)
+| table _time, host, sudo_user, command
+| sort -_time
+
+### Failed Sudo Attempts
+### Description: Detects failed sudo authentication which may indicate privilege escalation attempts
+### MITRE ATT&CK: T1548.003 - Abuse Elevation Control Mechanism: Sudo and Sudo Caching
+### Severity: HIGH
+index=linux-security sourcetype=linux_secure ("authentication failure" AND "sudo") OR "NOT in sudoers" earliest=-4h
+| table _time, host, _raw
+| sort -_time
+
+### su Command Usage
+### Description: Detects use of su to switch users -- common for lateral movement after initial access
+### MITRE ATT&CK: T1548.003 - Abuse Elevation Control Mechanism
+### Severity: MEDIUM
+index=linux-security sourcetype=linux_secure "su:" ("Successful" OR "FAILED") earliest=-4h
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` ACCOUNT AND PERSISTENCE CHANGES                                              `
+` --------------------------------------------------------------------------- `
+
+### User Account Changes (useradd/usermod/userdel)
+### Description: Detects user account creation, modification, or deletion
+### MITRE ATT&CK: T1136.001 - Create Account: Local Account
+### Severity: HIGH
+index=linux-security sourcetype=linux_secure ("useradd" OR "usermod" OR "userdel" OR "groupadd" OR "groupmod" OR "new user" OR "new group") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Cron Job Modifications
+### Description: Detects crontab editing via auth.log entries
+### MITRE ATT&CK: T1053.003 - Scheduled Task/Job: Cron
+### Severity: HIGH
+index=linux-security sourcetype=linux_secure "crontab" ("REPLACE" OR "DELETE" OR "LIST" OR "EDIT") earliest=-24h
+| rex "crontab.*\((?<cron_user>\S+)\)\s+(?<cron_action>\S+)"
+| table _time, host, cron_user, cron_action
+| sort -_time
+
+### Authorized Keys File Modified
+### Description: Detects modifications to SSH authorized_keys files via integrity monitoring or audit logs
+### MITRE ATT&CK: T1098.004 - Account Manipulation: SSH Authorized Keys
+### Severity: CRITICAL
+index=linux-security (sourcetype=linux_secure OR sourcetype=linux_audit) "authorized_keys" earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Password File Changes
+### Description: Detects direct modifications to /etc/passwd or /etc/shadow
+### MITRE ATT&CK: T1098 - Account Manipulation
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_audit ("/etc/passwd" OR "/etc/shadow") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` WEB ATTACKS                                                                  `
+` --------------------------------------------------------------------------- `
+
+### Web Shell Detection (POST to Suspicious Paths)
+### Description: Detects POST requests to unusual PHP/CGI paths that may indicate web shell activity
+### MITRE ATT&CK: T1505.003 - Server Software Component: Web Shell
+### Severity: CRITICAL
+index=linux-web sourcetype=access_combined "POST" earliest=-4h
+| rex "\"POST\s+(?<uri_path>\S+)"
+| where match(uri_path, "(?i)(\.(php|cgi|asp|aspx|jsp|py)\?|/uploads/.*\.(php|cgi|asp|jsp)|/tmp/|/images/.*\.php|/cache/.*\.php|\.php\.(jpg|gif|png|txt))")
+| stats count by uri_path, clientip, host
+| sort -count
+| table clientip, host, uri_path, count
+
+### Web Shell - Command Execution Parameters
+### Description: Detects web requests with command execution parameters in URLs
+### MITRE ATT&CK: T1505.003 - Server Software Component: Web Shell
+### Severity: CRITICAL
+index=linux-web sourcetype=access_combined earliest=-4h
+| rex "\"(?:GET|POST)\s+(?<full_uri>\S+)"
+| where match(full_uri, "(?i)(cmd=|exec=|system=|passthru=|shell_exec=|popen=|proc_open=|eval=|base64_decode|assert\(|phpinfo|whoami|/bin/sh|/bin/bash|%2Fbin%2F)")
+| table _time, clientip, host, full_uri, status
+| sort -_time
+
+### SQL Injection Attempts
+### Description: Detects common SQL injection patterns in web access logs
+### MITRE ATT&CK: T1190 - Exploit Public-Facing Application
+### Severity: HIGH
+index=linux-web sourcetype=access_combined earliest=-4h
+| rex "\"(?:GET|POST)\s+(?<full_uri>\S+)"
+| where match(full_uri, "(?i)(union\s+(all\s+)?select|'\s*(or|and)\s+['\d]|1\s*=\s*1|order\s+by\s+\d|information_schema|concat\(|group_concat|load_file|into\s+(out|dump)file|benchmark\(|sleep\(|waitfor\s+delay|having\s+1|extractvalue|updatexml|';\s*(drop|alter|create|insert|update|delete))")
+| table _time, clientip, host, full_uri, status
+| sort -_time
+
+### Path Traversal / LFI Attempts
+### Description: Detects directory traversal and local file inclusion attempts
+### MITRE ATT&CK: T1190 - Exploit Public-Facing Application
+### Severity: HIGH
+index=linux-web sourcetype=access_combined earliest=-4h
+| rex "\"(?:GET|POST)\s+(?<full_uri>\S+)"
+| where match(full_uri, "(?i)(\.\./\.\./|\.\.%2[fF]|/etc/passwd|/etc/shadow|/proc/self|/var/log|%00)")
+| table _time, clientip, host, full_uri, status
+| sort -_time
+
+### Web Server Error Spike
+### Description: Detects spike in 4xx/5xx errors that may indicate active exploitation
+### MITRE ATT&CK: T1190 - Exploit Public-Facing Application
+### Severity: MEDIUM
+index=linux-web sourcetype=access_combined earliest=-1h
+| where status >= 400
+| timechart span=5m count by status
+| where '400' + '401' + '403' + '404' + '500' > 50
+
+### Top Attacking IPs on Web Server
+### Description: Shows IPs generating the most 4xx/5xx errors
+### MITRE ATT&CK: T1190 - Exploit Public-Facing Application
+### Severity: MEDIUM
+index=linux-web sourcetype=access_combined earliest=-1h
+| where status >= 400
+| stats count as errors dc(uri_path) as unique_paths by clientip, host
+| where errors > 20
+| sort -errors
+| table clientip, host, errors, unique_paths
+
+
+` --------------------------------------------------------------------------- `
+` NETWORK & OUTBOUND CONNECTIONS                                               `
+` --------------------------------------------------------------------------- `
+
+### Outbound Connections from Web Server (Reverse Shell Indicator)
+### Description: Detects outbound network connections from web server processes logged via syslog or audit
+### MITRE ATT&CK: T1059.004 - Command and Scripting Interpreter: Unix Shell
+### Severity: CRITICAL
+index=linux-os sourcetype=syslog ("CONNECT" OR "outgoing" OR "established") earliest=-4h
+| where match(host, "(?i)(web|ecom|www|http|apache|nginx)")
+| table _time, host, _raw
+| sort -_time
+
+### Process Running from /tmp or /dev/shm
+### Description: Detects processes executing from world-writable temporary directories -- classic attacker staging area
+### MITRE ATT&CK: T1059 - Command and Scripting Interpreter
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_audit ("exe=\"/tmp/" OR "exe=\"/dev/shm/" OR "exe=\"/var/tmp/") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Process from /tmp via Syslog
+### Description: Alternative detection for processes in temp directories via syslog
+### MITRE ATT&CK: T1059 - Command and Scripting Interpreter
+### Severity: CRITICAL
+index=linux-os sourcetype=syslog ("/tmp/" OR "/dev/shm/" OR "/var/tmp/") ("exec" OR "started" OR "run") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` DATABASE ATTACKS                                                             `
+` --------------------------------------------------------------------------- `
+
+### Database Authentication Failures
+### Description: Detects failed database login attempts
+### MITRE ATT&CK: T1110 - Brute Force
+### Severity: HIGH
+index=linux-database ("Access denied" OR "authentication failed" OR "FATAL:  password authentication failed") earliest=-4h
+| stats count by host, _raw
+| where count > 5
+| sort -count
+| table host, count, _raw
+
+### Database Suspicious Queries (if query logging enabled)
+### Description: Detects potentially malicious SQL queries in database logs
+### MITRE ATT&CK: T1190 - Exploit Public-Facing Application
+### Severity: HIGH
+index=linux-database earliest=-4h
+| where match(_raw, "(?i)(DROP TABLE|DROP DATABASE|GRANT ALL|INTO OUTFILE|INTO DUMPFILE|LOAD_FILE|xp_cmdshell|information_schema|UNION.*SELECT)")
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` FILE INTEGRITY & SYSTEM CHANGES                                              `
+` --------------------------------------------------------------------------- `
+
+### File Integrity Alerts
+### Description: Detects alerts from the CCDC toolkit integrity monitoring scripts
+### MITRE ATT&CK: T1565 - Data Manipulation
+### Severity: HIGH
+index=linux-os sourcetype=syslog "integrity-monitor" earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### New File Integrity Alerts (New/Modified/Deleted)
+### Description: Detailed integrity monitoring events broken down by change type
+### MITRE ATT&CK: T1565 - Data Manipulation
+### Severity: HIGH
+index=linux-os sourcetype=syslog "integrity-monitor" ("NEW FILE" OR "MODIFIED" OR "DELETED") earliest=-24h
+| rex "integrity-monitor\[\d+\]: (?<change_type>\S+\s?\S*):?\s*(?<file_path>/\S+)"
+| stats count by host, change_type, file_path
+| sort -count
+| table host, change_type, file_path, count
+
+### Kernel Module Loaded
+### Description: Detects loading of kernel modules which could indicate rootkit installation
+### MITRE ATT&CK: T1547.006 - Boot or Logon Autostart Execution: Kernel Modules and Extensions
+### Severity: HIGH
+index=linux-os sourcetype=linux_kernel ("module" AND ("loaded" OR "insmod" OR "modprobe")) earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Systemd Service Files Created/Modified
+### Description: Detects new or modified systemd service files (persistence mechanism)
+### MITRE ATT&CK: T1543.002 - Create or Modify System Process: Systemd Service
+### Severity: HIGH
+index=linux-os sourcetype=syslog "systemd" ("new" OR "reload" OR "Created" OR "Updated") (".service") earliest=-24h
+| table _time, host, _raw
+| sort -_time

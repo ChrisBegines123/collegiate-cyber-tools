@@ -1,0 +1,216 @@
+` ============================================================================= `
+` CCDC26 - ACTIVE DIRECTORY ATTACK DETECTION QUERIES                          `
+` Paste these directly into Splunk Search                                      `
+` These queries target the Domain Controller's event logs                      `
+` ============================================================================= `
+
+
+` --------------------------------------------------------------------------- `
+` CREDENTIAL THEFT ATTACKS                                                     `
+` --------------------------------------------------------------------------- `
+
+### Kerberoasting Detection
+### Description: Detects Kerberos TGS requests using RC4 encryption (0x17) for non-machine accounts. Kerberoasting requests service tickets to offline-crack service account passwords.
+### MITRE ATT&CK: T1558.003 - Steal or Forge Kerberos Tickets: Kerberoasting
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4769 earliest=-4h
+| where Ticket_Encryption_Type="0x17" AND NOT match(ServiceName, "\$$")
+| where ServiceName!="krbtgt"
+| table _time, host, TargetUserName, ServiceName, Client_Address, Ticket_Encryption_Type
+| sort -_time
+
+### Kerberoasting - High Volume TGS Requests
+### Description: Detects a single user requesting TGS tickets for many services in a short period (Kerberoasting tool behavior)
+### MITRE ATT&CK: T1558.003 - Steal or Forge Kerberos Tickets: Kerberoasting
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4769 earliest=-1h
+| where NOT match(ServiceName, "\$$") AND ServiceName!="krbtgt"
+| stats count dc(ServiceName) as unique_services values(ServiceName) as services by TargetUserName, Client_Address
+| where unique_services > 5
+| sort -unique_services
+| table TargetUserName, Client_Address, unique_services, count, services
+
+### AS-REP Roasting Detection
+### Description: Detects Kerberos AS requests with pre-authentication type 0 (disabled), which allows offline password cracking
+### MITRE ATT&CK: T1558.004 - Steal or Forge Kerberos Tickets: AS-REP Roasting
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4768 earliest=-4h
+| where PreAuthType="0"
+| table _time, host, TargetUserName, Client_Address, PreAuthType, ServiceName
+| sort -_time
+
+### DCSync Attack Detection
+### Description: Detects replication requests (DCSync) from non-DC accounts using DS-Replication-Get-Changes extended rights
+### MITRE ATT&CK: T1003.006 - OS Credential Dumping: DCSync
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4662 earliest=-4h
+| where match(Properties, "(?i)(1131f6aa-9c07-11d1-f79f-00c04fc2dcd2|1131f6ad-9c07-11d1-f79f-00c04fc2dcd2|89e95b76-444d-4c62-991a-0facbeda640c)")
+| where NOT match(SubjectUserName, "\$$")
+| table _time, host, SubjectUserName, SubjectDomainName, ObjectName, Properties
+| sort -_time
+
+### Golden Ticket Detection (Forged TGT)
+### Description: Detects potential Golden Ticket usage via TGS requests with anomalous ticket properties
+### MITRE ATT&CK: T1558.001 - Steal or Forge Kerberos Tickets: Golden Ticket
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4769 earliest=-4h
+| where Ticket_Encryption_Type="0x17" AND ServiceName="krbtgt"
+| table _time, host, TargetUserName, ServiceName, Client_Address, Ticket_Encryption_Type, Ticket_Options
+| sort -_time
+
+### Golden Ticket - TGT with Abnormal Lifetime
+### Description: Detects Kerberos authentication events where the ticket lifetime is unusual (Golden Tickets often have 10-year lifetimes)
+### MITRE ATT&CK: T1558.001 - Steal or Forge Kerberos Tickets: Golden Ticket
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4768 earliest=-24h
+| where Status="0x0"
+| eval ticket_lifetime_hours=round((TicketExpireTime-_time)/3600, 1)
+| where ticket_lifetime_hours > 24
+| table _time, host, TargetUserName, Client_Address, ticket_lifetime_hours
+| sort -ticket_lifetime_hours
+
+
+` --------------------------------------------------------------------------- `
+` DOMAIN RECON AND ENUMERATION                                                 `
+` --------------------------------------------------------------------------- `
+
+### Password Spray Against Domain Accounts
+### Description: Detects many failed logons to different accounts from the same source in a short window
+### MITRE ATT&CK: T1110.003 - Brute Force: Password Spraying
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4625 earliest=-30m
+| stats count as attempts dc(TargetUserName) as unique_accounts values(TargetUserName) as targeted_accounts by src_ip, host
+| where unique_accounts > 10
+| sort -unique_accounts
+| table src_ip, host, attempts, unique_accounts, targeted_accounts
+
+### LDAP Reconnaissance (High Volume Queries)
+### Description: Detects high-volume LDAP queries that may indicate domain enumeration tools like BloodHound or ADRecon
+### MITRE ATT&CK: T1087.002 - Account Discovery: Domain Account
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:DirectoryService" earliest=-4h
+| stats count by src_ip, host
+| where count > 100
+| sort -count
+| table src_ip, host, count
+
+### DCShadow Attack Detection
+### Description: Detects suspicious SPN registration that may indicate DCShadow (registering a rogue DC)
+### MITRE ATT&CK: T1207 - Rogue Domain Controller
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4742 earliest=-24h
+| where match(ServicePrincipalNames, "(?i)(GC/|E3514235-4B06-11D1-AB04-00C04FC2DCD2)")
+| table _time, host, TargetUserName, SubjectUserName, ServicePrincipalNames
+| sort -_time
+
+### SPN Registration Changes
+### Description: Detects any ServicePrincipalName changes on computer or user accounts
+### MITRE ATT&CK: T1207 - Rogue Domain Controller
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" (EventCode=4742 OR EventCode=4738) earliest=-24h
+| where isnotnull(ServicePrincipalNames) AND ServicePrincipalNames!=""
+| table _time, host, TargetUserName, SubjectUserName, ServicePrincipalNames
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` PRIVILEGE ESCALATION                                                         `
+` --------------------------------------------------------------------------- `
+
+### AdminSDHolder Modification
+### Description: Detects modifications to the AdminSDHolder container which protects privileged group permissions
+### MITRE ATT&CK: T1484 - Domain Policy Modification
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4662 earliest=-24h
+| where match(ObjectName, "(?i)AdminSDHolder")
+| table _time, host, SubjectUserName, ObjectName, OperationType, Properties
+| sort -_time
+
+### Privileged Group Membership Changes
+### Description: Detects additions to high-value groups: Domain Admins, Enterprise Admins, Schema Admins, etc.
+### MITRE ATT&CK: T1098 - Account Manipulation
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" (EventCode=4728 OR EventCode=4732 OR EventCode=4756) earliest=-24h
+| search TargetUserName IN ("Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Account Operators", "Backup Operators", "DnsAdmins", "Group Policy Creator Owners")
+| table _time, host, SubjectUserName, MemberName, TargetUserName, EventCode
+| sort -_time
+
+### Security-Sensitive Group Changes (any change)
+### Description: Detects any modification to security-enabled groups
+### MITRE ATT&CK: T1098 - Account Manipulation
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" (EventCode=4728 OR EventCode=4729 OR EventCode=4732 OR EventCode=4733 OR EventCode=4756 OR EventCode=4757) earliest=-24h
+| eval action=case(EventCode==4728 OR EventCode==4732 OR EventCode==4756, "Added", EventCode==4729 OR EventCode==4733 OR EventCode==4757, "Removed")
+| table _time, host, action, SubjectUserName, MemberName, TargetUserName
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` GROUP POLICY & DOMAIN CONFIGURATION                                          `
+` --------------------------------------------------------------------------- `
+
+### GPO Modification
+### Description: Detects changes to Group Policy Objects which can be used for domain-wide persistence or configuration changes
+### MITRE ATT&CK: T1484.001 - Domain Policy Modification: Group Policy Modification
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" (EventCode=5136 OR EventCode=5137 OR EventCode=5141) earliest=-24h
+| where match(ObjectDN, "(?i)Group Policy")
+| eval change_type=case(EventCode==5136,"Modified",EventCode==5137,"Created",EventCode==5141,"Deleted")
+| table _time, host, SubjectUserName, change_type, ObjectDN, AttributeLDAPDisplayName, AttributeValue
+| sort -_time
+
+### GPO Linked or Unlinked
+### Description: Detects GPO link/unlink changes that could push malicious policies
+### MITRE ATT&CK: T1484.001 - Domain Policy Modification: Group Policy Modification
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=5136 earliest=-24h
+| where match(AttributeLDAPDisplayName, "(?i)gPLink")
+| table _time, host, SubjectUserName, ObjectDN, AttributeValue
+| sort -_time
+
+### DNS Record Modification
+### Description: Detects suspicious DNS zone or record changes on the DNS server
+### MITRE ATT&CK: T1071.004 - Application Layer Protocol: DNS
+### Severity: HIGH
+index=windows-dns sourcetype="WinEventLog:DNS" earliest=-24h
+| where match(_raw, "(?i)(zone.*added|zone.*deleted|record.*added|record.*deleted|zone.*modified)")
+| table _time, host, _raw
+| sort -_time
+
+### DNS Zone Transfer Attempts
+### Description: Detects AXFR/IXFR zone transfer requests which attackers use for domain recon
+### MITRE ATT&CK: T1590.002 - Gather Victim Network Information: DNS
+### Severity: MEDIUM
+index=windows-dns sourcetype="WinEventLog:DNS" earliest=-24h
+| where match(_raw, "(?i)(AXFR|IXFR|zone transfer)")
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` ACCOUNT LOCKOUT & SUSPICIOUS AUTH                                            `
+` --------------------------------------------------------------------------- `
+
+### Account Lockout Events
+### Description: Detects account lockouts which may indicate brute force or password spraying
+### MITRE ATT&CK: T1110 - Brute Force
+### Severity: MEDIUM
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4740 earliest=-1h
+| table _time, host, TargetUserName, TargetDomainName, SubjectUserName
+| sort -_time
+
+### Disabled Account Used for Logon
+### Description: Detects logon attempts with disabled accounts
+### MITRE ATT&CK: T1078 - Valid Accounts
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4625 SubStatus="0xC0000072" earliest=-24h
+| table _time, host, TargetUserName, src_ip, SubStatus
+| sort -_time
+
+### Logon with Explicit Credentials (runas)
+### Description: Detects use of explicit credentials which may indicate credential theft and reuse
+### MITRE ATT&CK: T1078 - Valid Accounts
+### Severity: MEDIUM
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4648 earliest=-4h
+| table _time, host, SubjectUserName, TargetUserName, TargetServerName
+| sort -_time

@@ -1,0 +1,56 @@
+- name: Install Tripwire (Debian)
+  ansible.builtin.apt:
+   name: tripwire
+   state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Install Tripwire (RedHat)
+  ansible.builtin.yum:
+   name: tripwire
+   state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Template the debian policy file for debian
+  ansible.builtin.template:
+   src: debian-twpol.txt.j2
+   dest: /etc/tripwire/twpol.txt
+   owner: root
+   group: root
+   mode: '0600'
+  when: ansible_os_family == 'Debian'
+
+- name: Template the policy file for Redhat
+  ansible.builtin.template:
+   src: twcfg.txt.j2
+   dest: /etc/tripwire/twpol.txt
+   owner: root
+   group: root
+   mode: '0600'
+
+- name: Copy the tw.cfg file to the system
+  ansible.builtin.copy:
+   src: tw.cfg
+   dest: /etc/tripwire/twcfg.txt
+   owner: root
+   group: root
+   mode: '0600'
+
+- name: Generate a local key for the system
+  expect:
+  command: >
+    twadmin --generate-keys
+    --local-keyfile /etc/tripwire/{{ inventory_hostname }}-local.key
+  responses:
+      "Enter the local passphrase:" : "{{ tripwire_local_key_pass }}"
+      "Verify the local passphrase:" : "{{ tripwire_local_key_pass }}"
+  args:
+   creates: /etc/tripwire/{{ inventory_hostname }}-local.key
+  become: true
+
+- name: Sign the policy file with the newly created local key
+  shell: >
+    twadmin --create-polfile --file /etc/tripwire/twpol.txt
+    --keyfile /etc/tripwire/{{ inventory_hostname }}-local.key
+  args:
+   creates: /etc/tripwire/twpol.txt.signed
+  become: true

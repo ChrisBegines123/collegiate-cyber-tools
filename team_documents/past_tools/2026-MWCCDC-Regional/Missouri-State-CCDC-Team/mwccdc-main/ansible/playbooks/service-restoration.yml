@@ -1,0 +1,312 @@
+---
+# Service Restoration Playbook for CCDC
+# Quickly restore critical services after incidents or system issues
+# This playbook validates, fixes, and restarts essential services
+
+- name: Service Restoration and Validation
+  hosts: all
+  become: true
+  gather_facts: true
+  
+  vars:
+    # Critical services by OS family
+    critical_services:
+      Debian:
+        - ssh
+        - systemd-resolved
+        - cron
+        - rsyslog
+      RedHat:
+        - sshd
+        - systemd-resolved
+        - crond
+        - rsyslog
+      common:
+        - network-manager
+        
+    # Web services
+    web_services:
+      - apache2
+      - nginx
+      - httpd
+      
+    # Database services
+    database_services:
+      - mysql
+      - mariadb
+      - postgresql
+      
+    # Monitoring services
+    monitoring_services:
+      - splunk
+      - splunkforwarder
+      - wazuh-agent
+      - fail2ban
+      
+    # Service validation commands
+    service_checks:
+      ssh: "ss -tlnp | grep ':22'"
+      apache2: "curl -I http://localhost/ 2>/dev/null | head -1"
+      nginx: "curl -I http://localhost/ 2>/dev/null | head -1"
+      mysql: "mysqladmin ping 2>/dev/null"
+      postgresql: "pg_isready 2>/dev/null"
+      bind9: "nslookup google.com localhost"
+      
+    restoration_log: "/var/log/service_restoration.log"
+    
+  pre_tasks:
+    - name: Create restoration log
+      file:
+        path: "{{ restoration_log }}"
+        state: touch
+        mode: '0644'
+        
+    - name: Log restoration start
+      lineinfile:
+        path: "{{ restoration_log }}"
+        line: "[{{ ansible_date_time.iso8601 }}] Service restoration started on {{ inventory_hostname }}"
+        
+    - name: Create backup directory for configurations
+      file:
+        path: "/root/service_restore_backup"
+        state: directory
+        mode: '0700'
+        
+  tasks:
+    # System Service Restoration
+    - name: Get current service status
+      service_facts:
+      register: initial_service_status
+      
+    - name: Restart and enable critical system services
+      service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop: "{{ critical_services.common + critical_services[ansible_os_family] | default([]) }}"
+      register: critical_service_restart
+      ignore_errors: true
+      
+    - name: Validate critical services
+      shell: "systemctl is-active {{ item }} && systemctl is-enabled {{ item }}"
+      loop: "{{ critical_services.common + critical_services[ansible_os_family] | default([]) }}"
+      register: critical_service_validation
+      changed_when: false
+      ignore_errors: true
+      
+    # Network Service Restoration
+    - name: Restart networking
+      service:
+        name: "{{ item }}"
+        state: restarted
+      loop:
+        - systemd-networkd
+        - systemd-resolved
+        - NetworkManager
+      ignore_errors: true
+      
+    - name: Flush DNS cache
+      shell: |
+        # Flush systemd-resolved cache
+        systemctl flush-dns 2>/dev/null || true
+        # Restart systemd-resolved
+        systemctl restart systemd-resolved 2>/dev/null || true
+        # Clear any local DNS cache
+        systemctl restart dnsmasq 2>/dev/null || true
+      changed_when: false
+      
+    # Web Services
+    - name: Check for web services
+      stat:
+        path: "/etc/systemd/system/{{ item }}.service"
+      loop: "{{ web_services }}"
+      register: web_service_files
+      
+    - name: Backup web service configurations
+      copy:
+        src: "{{ item }}"
+        dest: "/root/service_restore_backup/"
+        backup: true
+        remote_src: true
+      loop:
+        - /etc/apache2/apache2.conf
+        - /etc/nginx/nginx.conf
+        - /etc/httpd/conf/httpd.conf
+      ignore_errors: true
+      
+    - name: Test web service configurations
+      shell: |
+        if command -v apache2 >/dev/null 2>&1; then
+          apache2ctl configtest 2>&1 || echo "Apache config test failed"
+        fi
+        if command -v nginx >/dev/null 2>&1; then
+          nginx -t 2>&1 || echo "Nginx config test failed"
+        fi
+        if command -v httpd >/dev/null 2>&1; then
+          httpd -t 2>&1 || echo "HTTPD config test failed"
+        fi
+      register: web_config_test
+      changed_when: false
+      
+    - name: Restart web services if config is valid
+      service:
+        name: "{{ item.item }}"
+        state: restarted
+        enabled: true
+      loop: "{{ web_service_files.results }}"
+      when: 
+        - item.stat.exists
+        - "'failed' not in web_config_test.stdout"
+      ignore_errors: true
+      
+    # Database Services
+    - name: Restart database services
+      service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop: "{{ database_services }}"
+      ignore_errors: true
+      register: db_service_restart
+      
+    # Monitoring Services
+    - name: Restart monitoring services
+      service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop: "{{ monitoring_services }}"
+      ignore_errors: true
+      
+    # Service Validation
+    - name: Validate service functionality
+      shell: "{{ service_checks[item] }}"
+      loop: "{{ service_checks.keys() }}"
+      register: service_functionality_check
+      changed_when: false
+      ignore_errors: true
+      
+    # Firewall Service Restoration
+    - name: Ensure firewall is running
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - ufw
+        - firewalld
+        - iptables
+      ignore_errors: true
+      
+    - name: Apply basic firewall rules
+      shell: |
+        # UFW (Ubuntu/Debian)
+        if command -v ufw >/dev/null 2>&1; then
+          ufw --force enable 2>/dev/null || true
+          ufw allow 22/tcp 2>/dev/null || true
+          ufw allow 80/tcp 2>/dev/null || true
+          ufw allow 443/tcp 2>/dev/null || true
+        fi
+        # FirewallD (RHEL/CentOS)
+        if command -v firewall-cmd >/dev/null 2>&1; then
+          firewall-cmd --permanent --add-service=ssh 2>/dev/null || true
+          firewall-cmd --permanent --add-service=http 2>/dev/null || true
+          firewall-cmd --permanent --add-service=https 2>/dev/null || true
+          firewall-cmd --reload 2>/dev/null || true
+        fi
+      changed_when: false
+      
+    # Log Analysis
+    - name: Check for service errors in logs
+      shell: |
+        echo "=== Recent service errors ==="
+        journalctl --since "10 minutes ago" --priority=err --no-pager | tail -20
+        echo "=== Failed units ==="
+        systemctl list-units --failed --no-pager
+        echo "=== Service status ==="
+        systemctl status {{ (critical_services.common + critical_services[ansible_os_family] | default([])) | join(' ') }} --no-pager -l
+      register: service_error_check
+      changed_when: false
+      
+  post_tasks:
+    - name: Generate service status report
+      shell: |
+        {
+          echo "=== SERVICE RESTORATION REPORT ==="
+          echo "Date: $(date)"
+          echo "Host: {{ inventory_hostname }}"
+          echo ""
+          echo "=== CRITICAL SERVICES STATUS ==="
+          {% for service in critical_services.common + critical_services[ansible_os_family] | default([]) %}
+          echo -n "{{ service }}: "
+          systemctl is-active {{ service }} 2>/dev/null || echo "INACTIVE"
+          {% endfor %}
+          echo ""
+          echo "=== WEB SERVICES STATUS ==="
+          {% for service in web_services %}
+          echo -n "{{ service }}: "
+          systemctl is-active {{ service }} 2>/dev/null || echo "NOT INSTALLED/INACTIVE"
+          {% endfor %}
+          echo ""
+          echo "=== DATABASE SERVICES STATUS ==="
+          {% for service in database_services %}
+          echo -n "{{ service }}: "
+          systemctl is-active {{ service }} 2>/dev/null || echo "NOT INSTALLED/INACTIVE"
+          {% endfor %}
+          echo ""
+          echo "=== MONITORING SERVICES STATUS ==="
+          {% for service in monitoring_services %}
+          echo -n "{{ service }}: "
+          systemctl is-active {{ service }} 2>/dev/null || echo "NOT INSTALLED/INACTIVE"
+          {% endfor %}
+          echo ""
+          echo "=== PORT LISTENERS ==="
+          ss -tlnp | head -20
+          echo ""
+          echo "=== CONNECTIVITY TESTS ==="
+          ping -c 1 8.8.8.8 >/dev/null 2>&1 && echo "Internet: OK" || echo "Internet: FAILED"
+          nslookup google.com >/dev/null 2>&1 && echo "DNS: OK" || echo "DNS: FAILED"
+        } > /tmp/service_report_{{ ansible_date_time.epoch }}.txt
+      changed_when: false
+      
+    - name: Fetch service restoration report
+      fetch:
+        src: "/tmp/service_report_{{ ansible_date_time.epoch }}.txt"
+        dest: "./reports/{{ inventory_hostname }}-service-report-{{ ansible_date_time.epoch }}.txt"
+        flat: true
+        
+    - name: Log critical service failures
+      lineinfile:
+        path: "{{ restoration_log }}"
+        line: "[{{ ansible_date_time.iso8601 }}] CRITICAL SERVICE FAILURE: {{ item.item }} on {{ inventory_hostname }}"
+      loop: "{{ critical_service_validation.results }}"
+      when: item.rc != 0
+      
+    - name: Log restoration completion
+      lineinfile:
+        path: "{{ restoration_log }}"
+        line: "[{{ ansible_date_time.iso8601 }}] Service restoration completed on {{ inventory_hostname }}"
+        
+    - name: Display restoration summary
+      debug:
+        msg:
+          - "=== SERVICE RESTORATION COMPLETE ==="
+          - "Host: {{ inventory_hostname }}"
+          - "Critical services checked: {{ critical_services.common + critical_services[ansible_os_family] | default([]) | length }}"
+          - "Web services processed: {{ web_services | length }}"
+          - "Database services processed: {{ database_services | length }}"
+          - "Monitoring services processed: {{ monitoring_services | length }}"
+          - "Service report: ./reports/{{ inventory_hostname }}-service-report-*.txt"
+          - "Check {{ restoration_log }} for detailed logs"
+          - "Review any failed services manually"
+          
+    # Alert on critical failures
+    - name: Create alert for failed critical services
+      local_action:
+        module: lineinfile
+        path: "./service_alerts.log"
+        line: "[{{ ansible_date_time.iso8601 }}] CRITICAL SERVICE FAILURE on {{ inventory_hostname }}: {{ item.item }}"
+        create: true
+      loop: "{{ critical_service_validation.results }}"
+      when: item.rc != 0
+      run_once: false

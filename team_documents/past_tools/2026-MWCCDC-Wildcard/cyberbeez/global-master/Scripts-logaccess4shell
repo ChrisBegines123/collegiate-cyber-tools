@@ -1,0 +1,37 @@
+#Original Script: Caine Munro
+#Retooled by: Jack TC
+
+#################################################################################
+#	d8888b.  .d8b.  db   dD d88888b d8888b.       .o88b. d8888b. d888888b   #
+#	88  `8D d8' `8b 88 ,8P' 88'     88  `8D      d8P  Y8 88  `8D `oo88oo'   #
+#	88oooY' 88ooo88 88,8P   88ooooo 88oobY'      8P      88   88    88      #
+#	88ooob. 88ooo88 88`8b   88ooooo 88`8b        8b      88   88    88      #
+#	88   8D 88   88 88 `88. 88.     88 `88.      Y8b  d8 88  .8D    88      #
+#       Y8888P' YP   YP YP   YD Y88888P 88   YD       `Y88P' Y8888D'    YP    	#
+#################################################################################
+#                    Script to Monitor Apache Shell Access                      #
+#################################################################################
+
+ # IMPORTANT#: Run "chmod 660 /var/log/apache2/access.log" B4 Running Script! #
+
+
+NOW=$( date '+%s' )
+REF=$(( $NOW - 15*60 ))
+while read MONTH DAY HMS A4 ; do
+
+	TIMESTAMP=$(date --date "${MONTH} ${DAY} ${HMS} ${A4}" '+%s')
+	if [[ "$TIMESTAMP" -ge "$REF" ]] ; then
+		echo "${MONTH} ${DAY} ${HMS} ${A4}"
+			
+	fi
+
+sudo rm final_log.txt	# The Script Deletes the last log.	
+
+echo "SHELL COMMANDS" >> final_log.txt
+echo "--------------------------------------------------------------------------------------------"
+sudo grep 'shell' /var/log/apache2/access.log | sort -u >> final_log.txt
+echo "command" >> final_log.txt
+echo "--------------------------------------------------------------------------------------------"
+sudo grep 'backdoor'  /var/log/apache2/access.log | sort -u >> final_log.txt
+echo "Back Door!" >> final_log.txt
+echo "--------------------------------------------------------------------------------------------"

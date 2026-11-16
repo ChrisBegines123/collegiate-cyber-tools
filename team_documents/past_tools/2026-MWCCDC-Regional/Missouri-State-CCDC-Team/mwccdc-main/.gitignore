@@ -1,0 +1,8 @@
+# Configuration Directories
+.vscode
+.ansible
+.ansible-lint
+
+# Claude Related
+CLAUDE.md
+.claude

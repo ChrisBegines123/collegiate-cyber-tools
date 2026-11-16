@@ -1,0 +1,332 @@
+<dashboard version="1.1" theme="dark">
+  <label>CCDC26 - Security Operations Dashboard</label>
+  <description>Competition threat hunting and monitoring dashboard</description>
+
+  <!-- ================================================================== -->
+  <!-- ROW 1: SECURITY OVERVIEW                                           -->
+  <!-- ================================================================== -->
+  <row>
+    <panel>
+      <title>Failed Logons (Last 1h)</title>
+      <single>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" EventCode=4625 earliest=-1h | stats count</query>
+          <earliest>-1h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Account Changes (Last 24h)</title>
+      <single>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" (EventCode=4720 OR EventCode=4722 OR EventCode=4728 OR EventCode=4732 OR EventCode=4756) earliest=-24h | stats count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,5]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>New Services (Last 24h)</title>
+      <single>
+        <search>
+          <query>index=windows-system sourcetype="WinEventLog:System" EventCode=7045 earliest=-24h | stats count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,3]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SSH Failures (Last 1h)</title>
+      <single>
+        <search>
+          <query>index=linux-security sourcetype=linux_secure "Failed password" earliest=-1h | stats count</query>
+          <earliest>-1h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Defender Alerts (Last 24h)</title>
+      <single>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Defender" (EventCode=5001 OR EventCode=5010 OR EventCode=5012 OR EventCode=5007) earliest=-24h | stats count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ================================================================== -->
+  <!-- ROW 2: SECURITY EVENTS TIMELINE                                    -->
+  <!-- ================================================================== -->
+  <row>
+    <panel>
+      <title>Security Events Timeline (Last 4h)</title>
+      <chart>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" (EventCode=4625 OR EventCode=4624 OR EventCode=4720 OR EventCode=4732 OR EventCode=4688) earliest=-4h
+| eval event_type=case(EventCode==4625,"Failed Logon", EventCode==4624,"Successful Logon", EventCode==4720,"Account Created", EventCode==4732,"Group Member Added", EventCode==4688,"Process Created")
+| timechart span=5m count by event_type</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ================================================================== -->
+  <!-- ROW 3: ACTIVE THREATS                                              -->
+  <!-- ================================================================== -->
+  <row>
+    <panel>
+      <title>Suspicious Processes (Last 4h)</title>
+      <table>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" EventCode=4688 earliest=-4h
+| where match(CommandLine, "(?i)(-enc\s|invoke-mimikatz|invoke-kerberoast|sekurlsa|privilege::debug|downloadstring|Net\.WebClient|FromBase64|certutil.*urlcache)")
+| table _time, host, SubjectUserName, NewProcessName, CommandLine
+| sort -_time
+| head 20</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Persistence Events (Last 24h)</title>
+      <table>
+        <search>
+          <query>(index=windows-system sourcetype="WinEventLog:System" EventCode=7045) OR (index=windows-security sourcetype="WinEventLog:Security" EventCode=4698) OR (index=windows-sysmon sourcetype="WinEventLog:Sysmon" (EventCode=13 OR EventCode=19 OR EventCode=20 OR EventCode=21)) earliest=-24h
+| eval category=case(EventCode==7045,"New Service", EventCode==4698,"Scheduled Task", EventCode==13,"Registry Mod", EventCode==19 OR EventCode==20 OR EventCode==21,"WMI Subscription")
+| table _time, host, category, ServiceName, TaskName, TargetObject
+| sort -_time
+| head 20</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ================================================================== -->
+  <!-- ROW 4: AUTHENTICATION                                              -->
+  <!-- ================================================================== -->
+  <row>
+    <panel>
+      <title>Failed Logons by Source IP (Last 4h)</title>
+      <chart>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" EventCode=4625 earliest=-4h
+| stats count by src_ip
+| sort -count
+| head 15</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Failed Logons by Username (Last 4h)</title>
+      <chart>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" EventCode=4625 earliest=-4h
+| stats count by TargetUserName
+| sort -count
+| head 15</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>RDP Sessions (Last 24h)</title>
+      <table>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" EventCode=4624 LogonType=10 earliest=-24h
+| table _time, host, TargetUserName, src_ip
+| sort -_time
+| head 20</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ================================================================== -->
+  <!-- ROW 5: AUTHENTICATION - LINUX                                      -->
+  <!-- ================================================================== -->
+  <row>
+    <panel>
+      <title>SSH Failed Logins by Source IP (Last 4h)</title>
+      <chart>
+        <search>
+          <query>index=linux-security sourcetype=linux_secure "Failed password" earliest=-4h
+| rex "from (?&lt;src_ip&gt;\d+\.\d+\.\d+\.\d+)"
+| stats count by src_ip
+| sort -count
+| head 15</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>SSH Successful Logins (Last 24h)</title>
+      <table>
+        <search>
+          <query>index=linux-security sourcetype=linux_secure ("Accepted password" OR "Accepted publickey") earliest=-24h
+| rex "Accepted (?&lt;method&gt;\S+) for (?&lt;user&gt;\S+) from (?&lt;src_ip&gt;\d+\.\d+\.\d+\.\d+)"
+| table _time, host, user, src_ip, method
+| sort -_time
+| head 20</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Sudo Activity (Last 4h)</title>
+      <table>
+        <search>
+          <query>index=linux-security sourcetype=linux_secure "sudo:" NOT "pam_unix" earliest=-4h
+| rex "sudo:\s+(?&lt;sudo_user&gt;\S+)\s+:\s+.*COMMAND=(?&lt;command&gt;.*)"
+| where isnotnull(sudo_user)
+| table _time, host, sudo_user, command
+| sort -_time
+| head 20</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ================================================================== -->
+  <!-- ROW 6: NETWORK ACTIVITY                                            -->
+  <!-- ================================================================== -->
+  <row>
+    <panel>
+      <title>Top Web Clients by Request Count (Last 4h)</title>
+      <chart>
+        <search>
+          <query>index=linux-web sourcetype=access_combined earliest=-4h
+| stats count by clientip
+| sort -count
+| head 15</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Web Server Errors (4xx/5xx) by Source (Last 4h)</title>
+      <chart>
+        <search>
+          <query>index=linux-web sourcetype=access_combined earliest=-4h
+| where status >= 400
+| stats count by clientip, status
+| sort -count
+| head 20</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Outbound Connections - Non-Standard Ports (Sysmon, Last 4h)</title>
+      <table>
+        <search>
+          <query>index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=3 Initiated=true earliest=-4h
+| where NOT match(DestinationIp, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)")
+| where NOT DestinationPort IN (53, 80, 443, 8080, 8443, 123, 9997)
+| stats count values(DestinationPort) as ports by Image, DestinationIp, host
+| sort -count
+| head 15</query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ================================================================== -->
+  <!-- ROW 7: FILE INTEGRITY & AD CHANGES                                 -->
+  <!-- ================================================================== -->
+  <row>
+    <panel>
+      <title>File Integrity Alerts (Last 24h)</title>
+      <table>
+        <search>
+          <query>index=linux-os sourcetype=syslog "integrity-monitor" ("NEW FILE" OR "MODIFIED" OR "DELETED") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+| head 20</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel>
+      <title>AD Group Changes (Last 24h)</title>
+      <table>
+        <search>
+          <query>index=windows-security sourcetype="WinEventLog:Security" (EventCode=4728 OR EventCode=4729 OR EventCode=4732 OR EventCode=4733 OR EventCode=4756 OR EventCode=4757) earliest=-24h
+| eval action=case(EventCode==4728 OR EventCode==4732 OR EventCode==4756, "Added", EventCode==4729 OR EventCode==4733 OR EventCode==4757, "Removed")
+| table _time, host, action, SubjectUserName, MemberName, TargetUserName
+| sort -_time
+| head 20</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+
+</dashboard>

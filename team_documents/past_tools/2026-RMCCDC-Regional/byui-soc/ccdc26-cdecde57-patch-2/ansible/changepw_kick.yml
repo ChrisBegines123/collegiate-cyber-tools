@@ -1,0 +1,117 @@
+---
+# CCDC26 - Password Reset and Session Termination Playbook
+# 
+# Actions:
+#   1. Resets ALL non-system user passwords to the password you provide
+#   2. Kills all active sessions to boot out adversaries
+#
+# Usage:
+#   ansible-playbook -i inventory.ini changepw_kick.yml
+#
+
+- name: Reset passwords and terminate sessions (Linux)
+  hosts: linux
+  become: yes
+  gather_facts: yes
+
+  vars_prompt:
+    - name: new_password
+      prompt: "Enter the new password for ALL users"
+      private: yes
+      confirm: yes
+
+  tasks:
+    - name: Gather non-system users (UID >= 1000)
+      shell: |
+        awk -F: '$3 >= 1000 && $3 < 65534 && $7 !~ /nologin|false/ {print $1}' /etc/passwd
+      register: valid_users
+      changed_when: false
+
+    - name: Display users to be reset
+      debug:
+        msg: "Will reset password for: {{ valid_users.stdout_lines | join(', ') }}"
+
+    - name: Reset password for each user
+      user:
+        name: "{{ item }}"
+        password: "{{ new_password | password_hash('sha512') }}"
+        update_password: always
+      loop: "{{ valid_users.stdout_lines }}"
+
+    - name: Also reset root password
+      user:
+        name: root
+        password: "{{ new_password | password_hash('sha512') }}"
+        update_password: always
+
+    - name: Kill all user sessions
+      shell: |
+        for user in {{ valid_users.stdout_lines | join(' ') }}; do
+          pkill -KILL -u "$user" 2>/dev/null || true
+        done
+      ignore_errors: yes
+      when: valid_users.stdout_lines | length > 0
+
+    - name: Force logout all TTY sessions
+      shell: |
+        who | awk '{print $2}' | while read tty; do
+          pkill -9 -t "$tty" 2>/dev/null || true
+        done
+      ignore_errors: yes
+
+    - name: Display completion message
+      debug:
+        msg: "Password reset complete! Changed {{ valid_users.stdout_lines | length }} user(s) + root. All sessions terminated."
+
+
+- name: Reset passwords (Windows)
+  hosts: windows
+  gather_facts: yes
+
+  vars_prompt:
+    - name: new_password
+      prompt: "Enter the new password for ALL Windows users"
+      private: yes
+      confirm: yes
+
+  tasks:
+    - name: Get local users
+      win_shell: |
+        Get-LocalUser | Where-Object { 
+          $_.Enabled -eq $true -and 
+          $_.Name -notin @('DefaultAccount', 'WDAGUtilityAccount')
+        } | Select-Object -ExpandProperty Name
+      register: local_users
+      changed_when: false
+
+    - name: Display users to be reset
+      debug:
+        msg: "Will reset password for: {{ local_users.stdout_lines | join(', ') }}"
+      when: local_users.stdout_lines | length > 0
+
+    - name: Reset password for each local user
+      win_user:
+        name: "{{ item }}"
+        password: "{{ new_password }}"
+        update_password: always
+      loop: "{{ local_users.stdout_lines }}"
+      when: local_users.stdout_lines | length > 0
+      ignore_errors: yes
+
+    - name: Force logoff all users
+      win_shell: |
+        $sessions = quser 2>$null
+        if ($sessions) {
+          $sessions | Select-String "^\s*\w+" | ForEach-Object {
+            $line = $_.ToString().Trim() -split '\s+'
+            $sessionId = $line[2]
+            if ($sessionId -match '^\d+$') {
+              logoff $sessionId /server:localhost 2>$null
+            }
+          }
+        }
+      ignore_errors: yes
+
+    - name: Display completion message
+      debug:
+        msg: "Windows password reset complete! Changed {{ local_users.stdout_lines | length }} user(s). All sessions terminated."

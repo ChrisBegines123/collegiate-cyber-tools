@@ -1,0 +1,27 @@
+---
+# use `ansible-galaxy install -r requirements.yml`
+
+collections:
+
+  - name: devsec.hardening
+    # https://galaxy.ansible.com/ui/repo/published/devsec/hardening/docs/
+
+roles:
+# Fail2ban requirements
+  - name: "robertdebock.bootstrap"
+  - name: "robertdebock.epel"
+
+  - name: robertdebock.fail2ban
+    version: "5.0.6"
+    # https://galaxy.ansible.com/ui/standalone/roles/robertdebock/fail2ban/documentation/
+
+
+  - name: geerlingguy.ntp
+    version: "2.3.0"
+    
+  - name: geerlingguy.security
+    version: "2.1.0"  
+
+  - name: splunk
+    src: https://github.com/splunk/ansible-role-for-splunk
+    version: v2.1.4 

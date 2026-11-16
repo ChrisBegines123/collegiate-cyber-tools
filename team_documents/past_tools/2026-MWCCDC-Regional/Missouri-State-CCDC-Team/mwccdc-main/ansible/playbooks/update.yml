@@ -1,0 +1,26 @@
+---
+- name: "Update all servers"
+  hosts: all
+  become: true
+  tasks:
+    # This playbook will go through all hosts and attempt to update them ot the latest version through their respective package manager.
+    # Speed updating an entire environment!
+    - name: Upgrade yum packages
+      ansible.builtin.dnf:
+        update_cache: true
+        upgrade: yes
+      when: ansible_distribution in ['CentOS', 'RedHat']
+
+    - name: Update alpine packages
+      community.general.apk:
+        update_cache: true
+        upgrade: yes
+      when: ansible_distribution in ['Alpine']
+
+    # This task updates servers that use 'apt' and DEB packages
+    - name: Upgrade debian packages
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 1200
+        upgrade: yes
+      when: ansible_distribution in ['Debian', 'Ubuntu']

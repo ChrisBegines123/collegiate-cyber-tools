@@ -1,0 +1,19 @@
+---
+- name: Install Banner to Systems
+  hosts: all
+  become: true
+  tasks:
+  - name: Backup existing files 
+    ansible.builtin.archive:
+      src: /etc/issue /ets/issue.net /etc/motd
+      dest:
+
+  - name: Apply banner 
+    ansible.builtin.copy:
+      src:
+      dest:
+  
+  - name: Configure SSH to show banner 
+
+  - name: Restart ssh service 
+  

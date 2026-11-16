@@ -1,0 +1,80 @@
+Windows 10
+    Forensics question [num] correct
+
+    User/Group Auditing
+        Created user account [user]
+        Created user group [group]
+        Added users to group [group]
+        Removed unauthorized user [user]
+        Removed hidden user [user]
+        User [user] is an administrator
+        User [user] is not an administrator
+        User account [user] is password protected
+        Changed insecure password for user [user]
+        Insecure root password has been changed
+        Guest account is disabled
+
+    Software Management
+        Prohibited [filetype] files removed
+        [service] service has been installed and started
+        [service] service has been disabled and removed
+        [software] has been updated
+        Prohibited software [software] removed
+        Windows automatically checks for updates
+        The majority of windows updates are installed
+        [malware] backdoor removed
+
+    System Configuration
+        Removed plain text file containing [sensitive info]
+        Passwords must meet complexity requirements
+        Passwords are not stored using reversible encryption
+        Do not display last user name [Enabled]
+        Audit Security Group Management [Failure]
+        Anonymous FTP is disabled
+        System event failures are logged
+        System event successes are logged
+        Firefox warns when sites try to install add-ons
+        Limit local use of blank passwords to console only [Enabled]
+        Allow system to be shut down without having to log on [Disabled]
+        Internet Explorer Enhanced Security Configuration is [Enabled]
+        Windows Service Pack 2 is installed
+        Restrict anonymous access to Named Pipes and Shares [Enabled]
+        A secure maximum password age exists
+        A secure minimum password age exists
+        A secure minimum password length exists
+        A secure account lockout threshold exists
+        A secure account lockout duration exists
+        A secure account lockout observation window exists
+        A sufficient password history is being kept
+        Disabled File Share [share]
+        Do not require CTRL+ALT+DEL [Disabled]
+        Remote desktop sharing is turned off
+        Do not store LAN Manager hash value on next password change [Enabled]
+        Page file is cleared at shutdown
+        DNS zone transfers to any server is disabled
+        Dynamic updates to the DNS server are disabled
+        Server backup installed
+        Disabled SNMP Trap service
+        RDP network level authentication [Enabled]
+        RDP encryption level set to high
+        Users are no longer allowed to install print drivers
+        Audit Credential Validation [Failure, Success]
+        Firewall protection has been enabled
+        Antivirus protection has been enabled
+        Anonymous enumeration of SAM accounts and shares disabled
+        Remote access to CD drives has been disabled
+        UAC has been enabled
+        Applications may not bypass the secure desktop
+        Bitlocker drive encryption service is running
+        NTLM hash isn’t stored on next password change
+        Automatic administrative logon at recovery console is disabled
+        Account logon failures are logged
+        Remote Assistance connections [Disabled]
+        Switch to the secure desktop when prompting for elevation [enabled]
+        Message text for users attempting to logon is set
+        Digitally sign communications (always) [enabled]
+        Mbsa 2 has been installed
+        Audit user account management [failure]
+        Digitally encrypt or sign secure channel data (always) [enabled]
+        Recovery console: Allow automatic administrative logon [disabled]
+        Internet Explorer 8+ SmartScreen Filter [enabled]

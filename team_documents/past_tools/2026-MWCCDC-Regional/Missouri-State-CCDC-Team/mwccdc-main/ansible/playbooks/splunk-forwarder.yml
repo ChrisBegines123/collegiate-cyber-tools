@@ -1,0 +1,13 @@
+---
+# utilizes splunk's role to install the UF on a system to a specific indexer.
+- name: Install Splunk Universal Forwarder
+  hosts: uf
+  become: true
+  vars:
+    splunk_indexer: "172.20.241.20"  # Your Splunk server IP
+    splunk_admin_user: "admin"
+    splunk_admin_password: "YourSecurePassword123!"
+    deployment_task: check_splunk.yml
+    
+  roles:
+    - ../roles/splunk

@@ -1,0 +1,1 @@
+# Script should install and configure wazuh server on splunk for use. Likely run it serverless in docker foro easiest use. 

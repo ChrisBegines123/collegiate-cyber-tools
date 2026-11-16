@@ -1,0 +1,50 @@
+Ubuntu
+    Forensics question [num] correct
+
+    User/Group Auditing
+        Created user account [user]
+        Created user group [group]
+        Added users to group [group]
+        Removed unauthorized user [user]
+        Removed hidden user [user]
+        User [user] is an administrator
+        User [user] is not an administrator
+        User account [user] is password protected
+        Changed insecure password for user [user]
+        Insecure root password has been changed
+        Guest account is disabled
+
+    Software Management
+        Prohibited [filetype] files removed
+        [service] service has been installed and started
+        [service] service has been disabled and removed
+        [software] has been updated
+        Prohibited software [software] removed
+        The system automatically checks for updates daily
+        Install updates from important security updates
+        [malware] backdoor removed
+
+    System Configuration
+        Uncomplicated Firewall (UFW) protection has been enabled
+        Removed plain text file containing [sensitive info]
+        A default maximum password age is set
+        A default minimum password age is set
+        An account lockout policy is configured
+        Insecure sudo configuration fixed
+        MySQL remote access is disabled
+        Auto Log on disabled
+        SSH root login has been disabled
+        Bad file permissions on config.php fixed removed world-writable access.
+        System is not vulnerable to shellshock
+        A minimum password length is required
+        IPv6 is disabled
+        Previous passwords are remembered
+        Anonymous samba access is disabled
+        Ignore broadcast Icmp echo requests enabled
+
+    Unsorted
+        Address Space Layout Randomization Enabled
+        Kernel Pointer Hidden from Unprivileged Users
+        ftp anonymous root set correctly
+        ftp user logins are configured correctly
+        root user denied ftp login
