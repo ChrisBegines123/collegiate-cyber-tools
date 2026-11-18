@@ -1,6 +1,7 @@
 param(
 	[String]$User,
-	[String]$File
+	[String]$File,
+	[Switch]$All
 )
 
 if (-not $File) {
@@ -54,16 +55,23 @@ if ($User) {
 	}
 }
 
+$results = [System.Collections.Generic.List[object]]::new()
 foreach ($line in $records) {
 	$username, $cipher = $line -split ',', 2
 	try {
 		$secure = ConvertTo-SecureString -String $cipher -Key $key -ErrorAction Stop
-		[PSCustomObject]@{
+		$entry = [PSCustomObject]@{
 			Username = $username
 			Password = ConvertTo-Plaintext $secure
 		}
+		if ($All) { $results.Add($entry) } else { $entry }
 	} catch {
 		Write-Error "Failed to decrypt entry for ${username}: wrong master password, or the file is corrupt"
 	}
 }
 Remove-Variable key
+
+if ($All -and $results.Count -gt 0) {
+	$results | ConvertTo-Csv -NoTypeInformation | Set-Clipboard
+	Write-Host "Copied $($results.Count) username/password pair(s) to the clipboard as CSV."
+}
