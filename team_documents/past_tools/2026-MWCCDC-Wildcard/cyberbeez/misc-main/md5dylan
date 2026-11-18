@@ -1,0 +1,16 @@
+#!/bin/bash
+my_list=("/etc/sysctl.conf" "/etc/security/limits.conf" "/etc/syslog.conf" "/etc/network/interfaces" "/etc/resolv.conf" "/etc/passwd" "/etc/group" "/etc/shadow" "/etc/fstab" "/etc/mtab")
+for FILE in "$my_list"
+do
+    sum1="$(md5sum $FILE)"
+    sleep 2
+    sum2="$(md5sum $FILE)"
+    if [ "$sum1" = "$sum2 ];
+        then 
+            echo "Identical"
+        else;
+            echo "Different"
+    while true; do 
+        watch -n 10
+    fi 
+done

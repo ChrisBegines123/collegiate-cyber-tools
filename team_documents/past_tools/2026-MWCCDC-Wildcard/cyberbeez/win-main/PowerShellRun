@@ -1,0 +1,149 @@
+##Disable SMBv1 and SMBv2
+##SMBv1 and SMBv2 are vulnerable to the Blue screen of death; however, keep SMBv3 as it's the only secure version
+
+Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol
+
+Set-SmbServerConfiguration -EnableSMB2Protocol $false
+
+##Disable NetBIOS over TCP/IP
+##Another option is to run the GitHub script called "PowerShellRun." if available
+
+$base = "HKLM:SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces"
+
+$interfaces = Get-ChildItem $base | Select -ExpandProperty PSChildName
+
+foreach($interface in $interfaces) {
+    Set-ItemProperty -Path "$base\$interface" -Name "NetbiosOptions" -Value 2
+}
+
+##Disable TELNET
+
+Disable-WindowsOptionalFeature -Online -FeatureName TelnetClient
+
+##Disable AutoPlay/AutoRun
+##If Available, run the Powershell Script "PowerShellRun" on the GitHub
+
+<#
+.SYNOPSIS
+#Disables AutoPlay for all drives on the current user session.
+
+#.DESCRIPTION
+#This script disables Windows AutoPlay by setting the registry value NoDriveTypeAutoRun to 255
+#under the current user profile. This value blocks automatic execution of media across all drive types,
+#including removable USB drives, CD/DVDs, RAM disks, network shares, and unknown devices.
+
+#.EXECUTION
+#Run this script with normal privileges. No restart is required.
+#>
+
+# Registry path and value name
+$regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+$regName = "NoDriveTypeAutoRun"
+$desiredValue = 255  
+
+# Create registry path if missing
+if (-not (Test-Path $regPath)) {
+    Write-Output "Registry path does not exist. Creating it..."
+    New-Item -Path $regPath -Force | Out-Null
+}
+
+# Try to read current value safely
+$currentValue = $null
+try {
+    $props = Get-ItemProperty -Path $regPath -ErrorAction Stop
+    if ($props.PSObject.Properties.Match($regName)) {
+        $currentValue = $props.$regName
+    }
+} catch {
+    Write-Output "Unable to read the current registry setting. Proceeding to apply the new value."
+}
+
+# Compare and apply if needed
+if ($currentValue -eq $desiredValue) {
+    Write-Output "AutoPlay is already disabled on all drives (NoDriveTypeAutoRun = 255)."
+} else {
+    Set-ItemProperty -Path $regPath -Name $regName -Value $desiredValue
+    Write-Output "AutoPlay has been successfully disabled on all drives (NoDriveTypeAutoRun = 255)."
+}
+
+
+##Disable NTLMv1 and enforce NTLMv2
+
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "LmCompatibilityLevel" -Type DWord -Value 5
+##5 is highest level of security
+
+#Disable MS-MSDT aka Follina
+
+##Backup the key (recommended)
+reg export HKEY_CLASSES_ROOT\ms-msdt C:\ms-msdt_backup.reg
+
+##Delete the key to disable
+Remove-Item -Path "HKCR:\ms-msdt" -Recurse -Force
+
+##Disable LLMNR (Link-Local Multicast Name Resolution) aka the Successor for NetBIOS
+
+New-ItemProperty -Path $Path -Name "EnableMulticast" -Value 0 -PropertyType DWORD -Force
+
+##Disable mDNS (Multicast DNS), Used for Local Network Reconnaissance
+
+New-ItemProperty -Path $Path -Name "EnableMDNS" -Value 0 -PropertyType DWORD -Force
+
+## Disable Weak Encryption (SSL 2.0, 3.0, TLS 1.0 and 1.1) also enforces TLS 1.2
+##If available, run the GitHub script "PowerShellRun."
+
+$Base = "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols"
+$Protocols = @("SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1")
+
+foreach ($p in $Protocols) {
+    $Paths = @("$Base\$p\Client", "$Base\$p\Server")
+    foreach ($path in $Paths) {
+        if (!(Test-Path $path)) { New-Item -Path $path -Force }
+        New-ItemProperty -Path $path -Name "Enabled" -Value 0 -PropertyType DWORD -Force
+        New-ItemProperty -Path $path -Name "DisabledByDefault" -Value 1 -PropertyType DWORD -Force
+    }
+}
+
+##Disable IPv6
+##You can do this through the Network adapter already, but if explorer.exe is disabled, here is what you do
+
+Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6
+
+##Disable WebDAV (WebClient Service) WARNING: Disables extensions of the HTTP protocol, might impact applications ##or services required for functionality
+
+Stop-Service -Name "WebClient"
+Set-Service -Name "WebClient" -StartupType Disabled
+
+#Disable WPAD (Web Proxy Auto-Discovery) WARNING: Can disrupt legitimate network access
+
+New-ItemProperty -Path $Path -Name "WpadOverride" -Value 1 -PropertyType DWORD -Force
+
+##Disable CredSSP (Remote Code Execution Mitigation)
+
+New-ItemProperty -Path $Path -Name "AllowEncryptionOracle" -Value 0 -PropertyType DWORD -Force
+
+##Disable Powershell v2.0 (prevent downgrade attacks)
+
+Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root
+
+##Additional Commands
+
+##Reinforce Microsoft Defender
+
+Set-MpPreference -CloudBlockLevel High -MAPSReporting Advanced
+
+##Block at First Seen (Blocks any New unidentified files until analyzed by the cloud)
+
+Set-MpPreference -DisableBlockAtFirstSeen 0
+
+##Auditing/Logging
+
+New-ItemProperty -Path $Path -Name "EnableScriptBlockLogging" -Value 1 -PropertyType DWORD -Force
+
+##Remove Bloatware
+
+Get-AppxPackage -AllUsers | Where-Object { $_.Name -like "*Xbox*" } | Remove-AppxPackage
+
+##If you step off Powershell for any reason, make sure to type this command, "Set-ExecutionPolicy -ExecutionPolicy AllSigned -Force", to secure Powershell from running any script
+##If you need to run additional commands/scripts after executing this command, the safest way to do it without reverting the security is to run "powershell.exe -ExecutionPolicy Bypass -File "C:\Path\To\YourScript.ps1" " 
+##If possible or safe, do a system restart to enable changes. If there is no restart, these changes will not ##solidify. Restart = Windows Commit
+##Good Luck :) ##

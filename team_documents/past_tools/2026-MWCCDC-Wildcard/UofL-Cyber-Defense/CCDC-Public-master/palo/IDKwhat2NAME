@@ -1,0 +1,152 @@
+###############################################################
+# 1. LOGGING & LOG FORWARDING (NEW)
+###############################################################
+
+# Enable logging at session end for ALL rules
+configure
+set rulebase security rules <ruleName> log-end yes
+# For a catch-all:
+# set rulebase security rules any-to-any log-end yes
+commit
+exit
+
+# Enable threat logging
+configure
+set deviceconfig setting logging enable yes
+commit
+exit
+
+# (If SIEM/syslog provided)
+# configure
+# set deviceconfig system syslog-setting servers <serverName> server <ip> transport udp port 514
+# commit
+
+
+###############################################################
+# 2. APP-ID HARDENING (NEW)
+###############################################################
+
+configure
+
+# Block unknown traffic
+set rulebase security rules Block-Unknown application [ unknown-tcp unknown-udp ]
+set rulebase security rules Block-Unknown action deny
+set rulebase security rules Block-Unknown log-end yes
+
+# Restrict risky applications (examples)
+# set rulebase security rules Block-Risky application [ teamviewer tor bittorrent ]
+# set rulebase security rules Block-Risky action deny
+
+commit
+exit
+
+
+###############################################################
+# 3. NAT HARDENING (NEW)
+###############################################################
+
+# Show NAT rules
+show running nat-policy
+
+# Remove unused or suspicious NAT rules
+# configure
+# delete rulebase nat rules <natRuleName>
+# commit
+
+# Ensure no ANY-ANY inbound NAT
+# configure
+# set rulebase nat rules <rule> source-translation none
+# commit
+
+
+###############################################################
+# 4. CERTIFICATE / TLS HARDENING (NEW)
+###############################################################
+
+configure
+
+# Disable weak SSL/TLS versions
+set deviceconfig system ssl-tls-service-profile panos-default tls-versions tls1-2
+
+# Disable weak ciphers (example)
+set deviceconfig system ssl-tls-service-profile panos-default cipher-suites high
+
+commit
+exit
+
+
+###############################################################
+# 5. USER-ID CLEANUP (NEW)
+###############################################################
+
+# Check User-ID sources
+show user server-monitor statistics
+
+# Disable User-ID if not used
+configure
+set deviceconfig system service disable-userid-service yes
+commit
+exit
+
+
+###############################################################
+# 6. API ACCESS HARDENING (NEW)
+###############################################################
+
+# Check for API keys
+show api-key
+
+# Disable API access if unused
+configure
+set deviceconfig system service disable-api yes
+commit
+exit
+
+
+###############################################################
+# 7. MANAGEMENT PROFILE CLEANUP (NEW)
+###############################################################
+
+# Check interface management profiles
+show network interface ethernet
+
+# Remove mgmt services from data-plane interfaces
+configure
+set network interface ethernet <interface> layer3 management-profile none
+commit
+exit
+
+
+###############################################################
+# 8. SYSTEM RESOURCE MONITORING (NEW)
+###############################################################
+
+# CPU usage
+show system resources
+
+# Session count
+show session info
+
+# Dataplane restarts
+show system state filter sys.s1.dp0.stats
+
+# Packet drops
+show counter global filter severity drop
+
+
+###############################################################
+# 9. RULEBASE PROFILE ENFORCEMENT (NEW)
+###############################################################
+
+# Apply profile group to ALL rules
+configure
+set rulebase security rules <ruleName> profile-setting group CCDC-Strict
+commit
+exit
+
+# Enable logging on all rules
+configure
+set rulebase security rules <ruleName> log-start yes
+set rulebase security rules <ruleName> log-end yes
+commit
+exit

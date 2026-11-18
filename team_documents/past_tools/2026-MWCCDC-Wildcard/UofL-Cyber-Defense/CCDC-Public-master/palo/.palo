@@ -1,0 +1,16 @@
+script=$(mktemp)
+
+if command -v wget &> /dev/null; then
+        wget -q "https://raw.githubusercontent.com/UofL-Cyber-Defense/CCDC-Public/refs/heads/master/palo.sh" --no-check-certificate -O $script
+elif command -v curl &> /dev/null; then
+        curl -sSL "https://raw.githubusercontent.com/UofL-Cyber-Defense/CCDC-Public/refs/heads/master/palo.sh" --insecure -o $script
+fi
+
+if command -v sudo &> /dev/null; then
+  sudo sh "$script"
+else
+  echo "Password for root account"
+  su -c "sh $script"
+fi
+
+rm $script

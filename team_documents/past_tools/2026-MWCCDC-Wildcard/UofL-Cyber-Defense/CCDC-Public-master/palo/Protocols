@@ -1,0 +1,67 @@
+###############################################################
+# 1. DISABLE IMMEDIATELY - LINUX
+###############################################################
+sudo systemctl stop telnet.socket 2>/dev/null
+sudo systemctl disable telnet.socket 2>/dev/null
+
+sudo systemctl stop vsftpd 2>/dev/null
+sudo systemctl disable vsftpd 2>/dev/null
+
+sudo systemctl stop tftpd 2>/dev/null
+sudo systemctl disable tftpd 2>/dev/null
+
+sudo systemctl stop rsh.socket 2>/dev/null
+sudo systemctl stop rlogin.socket 2>/dev/null
+sudo systemctl stop rexec.socket 2>/dev/null
+sudo systemctl disable rsh.socket 2>/dev/null
+sudo systemctl disable rlogin.socket 2>/dev/null
+sudo systemctl disable rexec.socket 2>/dev/null
+
+sudo systemctl stop snmpd 2>/dev/null
+sudo systemctl disable snmpd 2>/dev/null
+
+sudo systemctl stop nfs-server 2>/dev/null
+sudo systemctl disable nfs-server 2>/dev/null
+
+sudo systemctl stop smbd 2>/dev/null
+sudo systemctl disable smbd 2>/dev/null
+
+sudo ss -tulpn
+sudo netstat -tulpn
+
+###############################################################
+# 2. DISABLE IMMEDIATELY - PALO
+###############################################################
+configure
+
+set deviceconfig system service disable-telnet yes
+set deviceconfig system service disable-http yes
+set deviceconfig system service disable-snmp yes
+
+set deviceconfig system permitted-ip <your-admin-ip>
+
+# Create strong crypto profiles
+set network ike crypto-profiles ike-crypto-profiles CCDC-IKE authentication sha256
+set network ike crypto-profiles ike-crypto-profiles CCDC-IKE encryption aes-256-cbc
+set network ike crypto-profiles ike-crypto-profiles CCDC-IKE dh-group group14
+
+set network ike crypto-profiles ipsec-crypto-profiles CCDC-IPSEC esp authentication sha256
+set network ike crypto-profiles ipsec-crypto-profiles CCDC-IPSEC esp encryption aes-256-cbc
+set network ike crypto-profiles ipsec-crypto-profiles CCDC-IPSEC dh-group group14
+
+commit
+exit
+
+##Manual Checks
+show running nat-policy
+show network ike crypto-profiles ike-crypto-profiles
+show network ike crypto-profiles ipsec-crypto-profiles
+
+##If NAT exposes sus ports
+configure
+delete rulebase nat rules <rule-name>
+commit
+exit
+
+##Verify
+nmap -sV -Pn <palo-alto-ip>

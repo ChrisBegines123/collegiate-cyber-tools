@@ -1,0 +1,229 @@
+` ============================================================================= `
+` CCDC26 - LATERAL MOVEMENT DETECTION QUERIES                                 `
+` Paste these directly into Splunk Search                                      `
+` ============================================================================= `
+
+
+` --------------------------------------------------------------------------- `
+` PSEXEC / REMOTE EXECUTION                                                    `
+` --------------------------------------------------------------------------- `
+
+### PsExec Service Installation
+### Description: Detects the PSEXESVC service installed by PsExec for remote command execution
+### MITRE ATT&CK: T1570 - Lateral Tool Transfer / T1021.002 - SMB/Windows Admin Shares
+### Severity: CRITICAL
+index=windows-system sourcetype="WinEventLog:System" EventCode=7045 earliest=-4h
+| where match(ServiceName, "(?i)(PSEXESVC|psexec|paexec|csexec|remcom)")
+| table _time, host, ServiceName, ImagePath, ServiceType
+| sort -_time
+
+### PsExec Process Execution
+### Description: Detects PsExec-related process creation
+### MITRE ATT&CK: T1569.002 - System Services: Service Execution
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4688 earliest=-4h
+| where match(CommandLine, "(?i)(psexec|paexec|remcom|csexec)") OR match(NewProcessName, "(?i)(psexe|paexe)")
+| table _time, host, SubjectUserName, NewProcessName, CommandLine
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` WMI REMOTE EXECUTION                                                         `
+` --------------------------------------------------------------------------- `
+
+### WMI Remote Process Execution
+### Description: Detects wmiprvse.exe (WMI Provider Host) spawning cmd.exe or powershell.exe, indicating remote WMI execution
+### MITRE ATT&CK: T1047 - Windows Management Instrumentation
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4688 earliest=-4h
+| where match(ParentProcessName, "(?i)wmiprvse\.exe") AND match(NewProcessName, "(?i)(cmd\.exe|powershell\.exe|pwsh\.exe)")
+| table _time, host, SubjectUserName, ParentProcessName, NewProcessName, CommandLine
+| sort -_time
+
+### WMI Remote Execution via Sysmon
+### Description: Sysmon-based detection of WMI remote process execution
+### MITRE ATT&CK: T1047 - Windows Management Instrumentation
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=1 earliest=-4h
+| where match(ParentImage, "(?i)wmiprvse\.exe")
+| where match(Image, "(?i)(cmd\.exe|powershell\.exe|pwsh\.exe|cscript\.exe|wscript\.exe|mshta\.exe)")
+| table _time, host, User, ParentImage, Image, CommandLine
+| sort -_time
+
+### WMIC Remote Commands
+### Description: Detects use of wmic.exe for remote execution
+### MITRE ATT&CK: T1047 - Windows Management Instrumentation
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4688 earliest=-4h
+| where match(NewProcessName, "(?i)wmic\.exe") AND match(CommandLine, "(?i)(/node:|process\s+call\s+create)")
+| table _time, host, SubjectUserName, CommandLine
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` REMOTE SERVICE CREATION                                                      `
+` --------------------------------------------------------------------------- `
+
+### Remote Service Creation (Non-Local Logon Sessions)
+### Description: Detects new services (Event 7045) created during remote logon sessions
+### MITRE ATT&CK: T1543.003 - Create or Modify System Process: Windows Service
+### Severity: HIGH
+index=windows-system sourcetype="WinEventLog:System" EventCode=7045 earliest=-4h
+| join type=inner host [search index=windows-security sourcetype="WinEventLog:Security" EventCode=4624 (LogonType=3 OR LogonType=10) earliest=-4h | dedup host, TargetUserName | fields host, TargetUserName, src_ip, LogonType]
+| table _time, host, ServiceName, ImagePath, src_ip, TargetUserName, LogonType
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` SMB / ADMIN SHARE ACCESS                                                     `
+` --------------------------------------------------------------------------- `
+
+### Admin Share Access (C$ / ADMIN$)
+### Description: Detects access to administrative shares which is used by many lateral movement tools
+### MITRE ATT&CK: T1021.002 - Remote Services: SMB/Windows Admin Shares
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" (EventCode=5140 OR EventCode=5145) earliest=-4h
+| where match(ShareName, "(?i)(C\$|ADMIN\$|IPC\$)")
+| where src_ip!="127.0.0.1" AND src_ip!="::" AND src_ip!="::1"
+| stats count values(ShareName) as shares by SubjectUserName, src_ip, host
+| sort -count
+| table SubjectUserName, src_ip, host, shares, count
+
+### SMB Write to Admin Share
+### Description: Detects file writes to admin shares (tool/payload staging)
+### MITRE ATT&CK: T1570 - Lateral Tool Transfer
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=5145 earliest=-4h
+| where match(ShareName, "(?i)(C\$|ADMIN\$)") AND match(AccessMask, "(?i)(0x2|0x4|WriteData|AppendData)")
+| table _time, host, SubjectUserName, src_ip, ShareName, RelativeTargetName, AccessMask
+| sort -_time
+
+### Unusual SMB Share Enumeration
+### Description: Detects hosts enumerating multiple shares which may indicate reconnaissance
+### MITRE ATT&CK: T1135 - Network Share Discovery
+### Severity: MEDIUM
+index=windows-security sourcetype="WinEventLog:Security" EventCode=5140 earliest=-1h
+| stats dc(ShareName) as unique_shares values(ShareName) as shares count by src_ip, host
+| where unique_shares > 3
+| sort -unique_shares
+| table src_ip, host, unique_shares, count, shares
+
+
+` --------------------------------------------------------------------------- `
+` SCHEDULED TASK LATERAL MOVEMENT                                              `
+` --------------------------------------------------------------------------- `
+
+### Remote Scheduled Task Creation
+### Description: Detects scheduled task creation from non-local sources (task created during network logon session)
+### MITRE ATT&CK: T1053.005 - Scheduled Task/Job: Scheduled Task
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4698 earliest=-4h
+| table _time, host, SubjectUserName, SubjectDomainName, TaskName, TaskContent
+| sort -_time
+
+### schtasks.exe Remote Execution
+### Description: Detects use of schtasks.exe with /create and /s flags (remote scheduling)
+### MITRE ATT&CK: T1053.005 - Scheduled Task/Job: Scheduled Task
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4688 earliest=-4h
+| where match(NewProcessName, "(?i)schtasks\.exe") AND match(CommandLine, "(?i)(/create|/run)") AND match(CommandLine, "(?i)/s\s")
+| table _time, host, SubjectUserName, CommandLine
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` WINRM / POWERSHELL REMOTING                                                  `
+` --------------------------------------------------------------------------- `
+
+### WinRM Remote Shell Execution
+### Description: Detects wsmprovhost.exe (WinRM provider) spawning processes, indicating PowerShell remoting or Enter-PSSession
+### MITRE ATT&CK: T1021.006 - Remote Services: Windows Remote Management
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4688 earliest=-4h
+| where match(ParentProcessName, "(?i)wsmprovhost\.exe")
+| table _time, host, SubjectUserName, ParentProcessName, NewProcessName, CommandLine
+| sort -_time
+
+### WinRM Inbound Connections
+### Description: Detects network logons (Type 3) associated with WinRM on port 5985/5986
+### MITRE ATT&CK: T1021.006 - Remote Services: Windows Remote Management
+### Severity: MEDIUM
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3 earliest=-4h
+| where match(LogonProcessName, "(?i)NtLmSsp") OR match(ProcessName, "(?i)wsmprovhost")
+| stats count by TargetUserName, src_ip, host
+| sort -count
+| table TargetUserName, src_ip, host, count
+
+
+` --------------------------------------------------------------------------- `
+` RDP LATERAL MOVEMENT                                                         `
+` --------------------------------------------------------------------------- `
+
+### RDP Lateral Movement Between Internal Hosts
+### Description: Detects RDP sessions (LogonType 10) between competition hosts (not from team workstations)
+### MITRE ATT&CK: T1021.001 - Remote Services: Remote Desktop Protocol
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4624 LogonType=10 earliest=-4h
+| where match(src_ip, "^172\.20\.242\.")
+| stats count by TargetUserName, src_ip, host
+| sort -count
+| table TargetUserName, src_ip, host, count
+
+### RDP Session Timeline
+### Description: Timeline of all RDP connections for audit purposes
+### MITRE ATT&CK: T1021.001 - Remote Services: Remote Desktop Protocol
+### Severity: MEDIUM
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4624 LogonType=10 earliest=-24h
+| table _time, host, TargetUserName, src_ip, WorkstationName
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` SSH LATERAL MOVEMENT (Linux)                                                 `
+` --------------------------------------------------------------------------- `
+
+### SSH Between Internal Hosts
+### Description: Detects SSH connections between internal competition hosts (potential lateral movement)
+### MITRE ATT&CK: T1021.004 - Remote Services: SSH
+### Severity: MEDIUM
+index=linux-security sourcetype=linux_secure ("Accepted password" OR "Accepted publickey") earliest=-4h
+| rex "Accepted (?<method>\S+) for (?<user>\S+) from (?<src_ip>\d+\.\d+\.\d+\.\d+)"
+| where match(src_ip, "^172\.20\.242\.")
+| table _time, host, user, src_ip, method
+| sort -_time
+
+### SSH from Non-SSH Hosts (Unusual Outbound SSH)
+### Description: Detects outbound SSH connections from hosts that normally should not initiate SSH (e.g., web servers)
+### MITRE ATT&CK: T1021.004 - Remote Services: SSH
+### Severity: HIGH
+index=linux-security sourcetype=linux_secure "Accepted" earliest=-4h
+| rex "from (?<src_ip>\d+\.\d+\.\d+\.\d+)"
+| stats count by src_ip, host
+| sort -count
+| table src_ip, host, count
+
+
+` --------------------------------------------------------------------------- `
+` CROSS-PLATFORM CORRELATION                                                   `
+` --------------------------------------------------------------------------- `
+
+### All Network Logons Across Windows (Type 3, 10)
+### Description: Unified view of all remote logons across Windows hosts for lateral movement hunting
+### MITRE ATT&CK: T1021 - Remote Services
+### Severity: LOW
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4624 (LogonType=3 OR LogonType=10) earliest=-4h
+| eval logon_method=case(LogonType==3,"Network",LogonType==10,"RDP")
+| stats count values(logon_method) as methods by TargetUserName, src_ip, host
+| where count > 1
+| sort -count
+| table TargetUserName, src_ip, host, methods, count
+
+### Lateral Movement Timeline (Combined Windows + Linux)
+### Description: Unified timeline of remote access events across all platforms for tracking attacker movement
+### MITRE ATT&CK: T1021 - Remote Services
+### Severity: LOW
+(index=windows-security sourcetype="WinEventLog:Security" EventCode=4624 (LogonType=3 OR LogonType=10)) OR (index=linux-security sourcetype=linux_secure ("Accepted password" OR "Accepted publickey")) earliest=-4h
+| eval platform=if(match(sourcetype,"WinEventLog"),"Windows","Linux")
+| eval detail=coalesce(TargetUserName, _raw)
+| table _time, platform, host, src_ip, detail
+| sort -_time

@@ -1,0 +1,283 @@
+` ============================================================================= `
+` CCDC26 - C2 / BEACONING / EXFILTRATION DETECTION QUERIES                   `
+` Paste these directly into Splunk Search                                      `
+` ============================================================================= `
+
+
+` --------------------------------------------------------------------------- `
+` DNS TUNNELING                                                                `
+` --------------------------------------------------------------------------- `
+
+### DNS Tunneling - High Volume DNS Queries
+### Description: Detects hosts making unusually high volumes of DNS queries, which may indicate DNS tunneling for C2 or data exfiltration
+### MITRE ATT&CK: T1071.004 - Application Layer Protocol: DNS
+### Severity: HIGH
+index=linux-dns sourcetype=named earliest=-1h
+| stats count as query_count dc(query) as unique_queries by src_ip
+| where query_count > 500
+| sort -query_count
+| table src_ip, query_count, unique_queries
+
+### DNS Tunneling - Long Subdomain Names
+### Description: Detects DNS queries with abnormally long subdomain labels (>30 chars), a strong indicator of DNS tunneling
+### MITRE ATT&CK: T1071.004 - Application Layer Protocol: DNS
+### Severity: CRITICAL
+index=linux-dns sourcetype=named earliest=-4h
+| rex "query:\s+(?<query_name>\S+)"
+| eval subdomain_length=len(mvindex(split(query_name, "."), 0))
+| where subdomain_length > 30
+| stats count by query_name, src_ip
+| sort -count
+| table src_ip, query_name, count
+
+### DNS Tunneling - TXT Record Queries
+### Description: Detects high volumes of TXT record queries which are commonly used for DNS tunneling data transfer
+### MITRE ATT&CK: T1071.004 - Application Layer Protocol: DNS
+### Severity: HIGH
+index=linux-dns sourcetype=named "TXT" earliest=-4h
+| stats count by src_ip
+| where count > 50
+| sort -count
+| table src_ip, count
+
+### DNS Tunneling - Windows DNS Server
+### Description: Detects DNS tunneling indicators on Windows DNS server logs
+### MITRE ATT&CK: T1071.004 - Application Layer Protocol: DNS
+### Severity: HIGH
+index=windows-dns sourcetype="WinEventLog:DNS" earliest=-4h
+| rex "(?<query_name>[^\s]+\.[^\s]+)"
+| eval label_length=len(mvindex(split(query_name, "."), 0))
+| where label_length > 30
+| stats count by query_name
+| where count > 5
+| sort -count
+| table query_name, count
+
+### DNS to Rare/New Domains
+### Description: Detects DNS queries to domains not seen in the past 24 hours (potential C2 domain)
+### MITRE ATT&CK: T1071.004 - Application Layer Protocol: DNS
+### Severity: MEDIUM
+index=linux-dns sourcetype=named earliest=-1h
+| rex "query:\s+\S+\.(?<domain>[^.]+\.[^.\s]+)"
+| stats count earliest(_time) as first_seen by domain
+| where first_seen > relative_time(now(), "-1h")
+| sort -count
+| table domain, count, first_seen
+
+
+` --------------------------------------------------------------------------- `
+` HTTP BEACONING                                                               `
+` --------------------------------------------------------------------------- `
+
+### HTTP Beaconing - Regular Interval Connections
+### Description: Detects hosts making HTTP connections at regular intervals to the same destination, characteristic of C2 beacons
+### MITRE ATT&CK: T1071.001 - Application Layer Protocol: Web Protocols
+### Severity: CRITICAL
+index=linux-web sourcetype=access_combined earliest=-24h
+| stats count avg(_time) as avg_time stdev(_time) as stdev_time min(_time) as first max(_time) as last by clientip, host
+| eval beacon_score=if(stdev_time>0, (avg_time/stdev_time), 0)
+| where beacon_score > 5 AND count > 20
+| sort -beacon_score
+| table clientip, host, count, beacon_score
+
+### HTTP Beaconing - Sysmon Network Connections (Windows)
+### Description: Detects regular-interval outbound HTTP/HTTPS connections from Windows hosts via Sysmon
+### MITRE ATT&CK: T1071.001 - Application Layer Protocol: Web Protocols
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=3 (DestinationPort=80 OR DestinationPort=443 OR DestinationPort=8080 OR DestinationPort=8443) earliest=-24h
+| where NOT match(DestinationIp, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)")
+| stats count values(DestinationPort) as ports by Image, DestinationIp, host
+| where count > 50
+| sort -count
+| table Image, DestinationIp, ports, host, count
+
+### HTTP Beaconing - Unusual User Agents
+### Description: Detects HTTP requests with suspicious or default user agent strings often used by C2 frameworks
+### MITRE ATT&CK: T1071.001 - Application Layer Protocol: Web Protocols
+### Severity: HIGH
+index=linux-web sourcetype=access_combined earliest=-4h
+| rex "\"(?<user_agent>[^\"]+)\"\s*$"
+| where match(user_agent, "(?i)(python-requests|python-urllib|curl|wget|powershell|go-http|java/|apache-httpclient|CobaltStrike|^Mozilla/4\.0$|^$)")
+| stats count by clientip, user_agent, host
+| sort -count
+| table clientip, user_agent, host, count
+
+
+` --------------------------------------------------------------------------- `
+` UNUSUAL OUTBOUND CONNECTIONS                                                 `
+` --------------------------------------------------------------------------- `
+
+### Unusual Outbound Ports (Sysmon)
+### Description: Detects outbound connections on non-standard ports which may indicate C2 or data exfil channels
+### MITRE ATT&CK: T1571 - Non-Standard Port
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=3 Initiated=true earliest=-4h
+| where NOT match(DestinationIp, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)")
+| where NOT DestinationPort IN (53, 80, 443, 8080, 8443, 123, 9997)
+| stats count values(DestinationPort) as ports by Image, DestinationIp, User, host
+| sort -count
+| table Image, DestinationIp, ports, User, host, count
+
+### Outbound Connections from Server Processes
+### Description: Detects outbound connections from processes that normally only accept inbound connections (web servers, databases)
+### MITRE ATT&CK: T1071 - Application Layer Protocol
+### Severity: CRITICAL
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=3 Initiated=true earliest=-4h
+| where match(Image, "(?i)(w3wp\.exe|httpd\.exe|nginx\.exe|mysqld\.exe|sqlservr\.exe|postgres\.exe|iis.*\.exe)")
+| where NOT match(DestinationIp, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)")
+| table _time, host, User, Image, DestinationIp, DestinationPort
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` LARGE DATA TRANSFER / EXFILTRATION                                           `
+` --------------------------------------------------------------------------- `
+
+### Large Data Transfer via Web
+### Description: Detects large HTTP responses that may indicate data exfiltration
+### MITRE ATT&CK: T1048 - Exfiltration Over Alternative Protocol
+### Severity: HIGH
+index=linux-web sourcetype=access_combined earliest=-4h
+| rex "(?<bytes_sent>\d+)\s+\"[^\"]*\"\s*$"
+| eval bytes_sent=tonumber(bytes_sent)
+| where bytes_sent > 10485760
+| eval mb_sent=round(bytes_sent/1048576, 2)
+| table _time, clientip, host, uri_path, status, mb_sent
+| sort -mb_sent
+
+### Large Outbound Data Volume by Source
+### Description: Aggregates outbound data by source IP to identify potential bulk exfiltration
+### MITRE ATT&CK: T1048 - Exfiltration Over Alternative Protocol
+### Severity: MEDIUM
+index=linux-web sourcetype=access_combined earliest=-4h
+| stats sum(bytes) as total_bytes count as requests by clientip, host
+| eval total_mb=round(total_bytes/1048576, 2)
+| where total_mb > 50
+| sort -total_mb
+| table clientip, host, total_mb, requests
+
+### FTP Large File Transfer
+### Description: Detects large file transfers via FTP
+### MITRE ATT&CK: T1048.003 - Exfiltration Over Unencrypted Non-C2 Protocol
+### Severity: HIGH
+index=linux-ftp earliest=-24h
+| where match(_raw, "(?i)(STOR|RETR|OK DOWNLOAD|OK UPLOAD)")
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` ENCODED / OBFUSCATED TRAFFIC                                                 `
+` --------------------------------------------------------------------------- `
+
+### Base64 Patterns in Web URLs
+### Description: Detects HTTP requests containing base64-encoded payloads in URLs (potential encoded commands or data exfil)
+### MITRE ATT&CK: T1132.001 - Data Encoding: Standard Encoding
+### Severity: HIGH
+index=linux-web sourcetype=access_combined earliest=-4h
+| rex "\"(?:GET|POST)\s+(?<full_uri>\S+)"
+| where match(full_uri, "(?i)(base64|[A-Za-z0-9+/]{40,}={0,2})")
+| table _time, clientip, host, full_uri, status
+| sort -_time
+
+### PowerShell Download Cradles
+### Description: Detects PowerShell commands using download cradle patterns for staging
+### MITRE ATT&CK: T1105 - Ingress Tool Transfer
+### Severity: CRITICAL
+index=windows-powershell sourcetype="WinEventLog:PowerShell" EventCode=4104 earliest=-4h
+| where match(ScriptBlockText, "(?i)(IEX\s*\(.*Net\.WebClient|IEX\s*\(.*Invoke-WebRequest|Invoke-Expression.*DownloadString|New-Object.*Net\.WebClient.*DownloadString|\.DownloadString\(.*http|\.DownloadFile\(.*http|Start-BitsTransfer.*http|Invoke-WebRequest.*-OutFile|certutil.*-urlcache|bitsadmin.*transfer)")
+| table _time, host, UserID, ScriptBlockText
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` KNOWN C2 FRAMEWORK INDICATORS                                                `
+` --------------------------------------------------------------------------- `
+
+### Cobalt Strike Indicators
+### Description: Detects Cobalt Strike default behaviors: named pipes, default URIs, beacon patterns
+### MITRE ATT&CK: T1071.001 - Application Layer Protocol: Web Protocols
+### Severity: CRITICAL
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" earliest=-24h
+| where (EventCode==17 AND match(PipeName, "(?i)(\\\\MSSE-|\\\\msagent_|\\\\postex_|\\\\status_|\\\\mojo\.|\\\\interprocess\.)")) OR (EventCode==1 AND match(CommandLine, "(?i)(rundll32\.exe.*,Start|regsvr32.*scrobj|C:\\\\Windows\\\\syswow64\\\\rundll32)") AND NOT match(ParentImage, "(?i)explorer\.exe"))
+| table _time, host, EventCode, User, Image, CommandLine, PipeName
+| sort -_time
+
+### Cobalt Strike Default URIs in Web Logs
+### Description: Detects HTTP requests matching Cobalt Strike's default malleable C2 profile URIs
+### MITRE ATT&CK: T1071.001 - Application Layer Protocol: Web Protocols
+### Severity: CRITICAL
+index=linux-web sourcetype=access_combined earliest=-24h
+| rex "\"(?:GET|POST)\s+(?<uri_path>\S+)"
+| where match(uri_path, "(?i)(/pixel\.gif|/submit\.php|/__utm\.gif|/ga\.js|/fwlink|/updates|/visit\.js|/jquery-\d+\.\d+\.\d+\.min\.js|/beacon\.js)")
+| stats count by clientip, uri_path, host
+| sort -count
+| table clientip, uri_path, host, count
+
+### Metasploit / Meterpreter Indicators
+### Description: Detects Metasploit-related process patterns and named pipes
+### MITRE ATT&CK: T1059 - Command and Scripting Interpreter
+### Severity: CRITICAL
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=1 earliest=-24h
+| where match(CommandLine, "(?i)(meterpreter|metsvc|msfvenom|payload.*reverse|shell.*reverse|exploit/multi|post/windows)") OR match(Image, "(?i)(msfconsole|msfvenom)")
+| table _time, host, User, ParentImage, Image, CommandLine
+| sort -_time
+
+### Empire / PowerShell Empire Indicators
+### Description: Detects PowerShell Empire agent patterns in script block logs
+### MITRE ATT&CK: T1059.001 - Command and Scripting Interpreter: PowerShell
+### Severity: CRITICAL
+index=windows-powershell sourcetype="WinEventLog:PowerShell" EventCode=4104 earliest=-24h
+| where match(ScriptBlockText, "(?i)(Invoke-Empire|Get-Keystrokes|Get-TimedScreenshot|Invoke-Portscan|Invoke-SMBExec|Invoke-PsExec|PowerView|Invoke-ShareFinder|Find-LocalAdminAccess|Get-NetComputer|Get-NetUser|Get-NetGroup|Get-DomainUser|Get-DomainComputer|Get-DomainGroup)")
+| table _time, host, UserID, ScriptBlockText
+| sort -_time
+
+### SSH-Based C2 (Paramiko / Automated SSH)
+### Description: Detects automated SSH connections using Paramiko or other non-standard SSH clients (the malware pattern seen in previous CCDC incidents)
+### MITRE ATT&CK: T1071 - Application Layer Protocol
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_secure ("paramiko" OR "SSH-2.0-paramiko" OR "libssh" OR "Go-http") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Reverse Shell Indicators in Process Logs
+### Description: Detects common reverse shell patterns in command execution
+### MITRE ATT&CK: T1059.004 - Command and Scripting Interpreter: Unix Shell
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_audit earliest=-4h
+| where match(_raw, "(?i)(bash\s+-i.*>&.*/dev/tcp|/dev/tcp/|nc\s+-e|ncat\s+-e|python.*socket.*connect|perl.*socket.*INET|ruby.*TCPSocket|php.*fsockopen|socat.*exec)")
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` PERIODIC CONNECTION ANALYSIS                                                 `
+` --------------------------------------------------------------------------- `
+
+### Beaconing Analysis - Connection Regularity Score
+### Description: Statistical analysis to find regular-interval connections characteristic of C2 beacons. High jitter_score with many connections = likely beaconing.
+### MITRE ATT&CK: T1071 - Application Layer Protocol
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=3 Initiated=true earliest=-24h
+| where NOT match(DestinationIp, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)")
+| sort _time
+| streamstats current=f last(_time) as prev_time by Image, DestinationIp
+| eval interval=_time-prev_time
+| where interval > 0
+| stats count avg(interval) as avg_interval stdev(interval) as stdev_interval by Image, DestinationIp, DestinationPort, host
+| where count > 10 AND stdev_interval < (avg_interval * 0.2)
+| eval avg_interval_sec=round(avg_interval, 0)
+| eval jitter_pct=round((stdev_interval/avg_interval)*100, 1)
+| sort jitter_pct
+| table Image, DestinationIp, DestinationPort, host, count, avg_interval_sec, jitter_pct
+
+### Outbound Connection Frequency by Process
+### Description: Shows which processes are making the most outbound connections -- useful for identifying C2 agents
+### MITRE ATT&CK: T1071 - Application Layer Protocol
+### Severity: MEDIUM
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=3 Initiated=true earliest=-4h
+| where NOT match(DestinationIp, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)")
+| stats count dc(DestinationIp) as unique_destinations dc(DestinationPort) as unique_ports by Image, host
+| where count > 20
+| sort -count
+| table Image, host, count, unique_destinations, unique_ports

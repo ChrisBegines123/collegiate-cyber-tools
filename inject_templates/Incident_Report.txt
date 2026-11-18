@@ -1,0 +1,216 @@
+INCIDENT REPORT
+
+Reported By:
+Incident Lead:
+Severity:
+Status:
+
+
+1. EXECUTIVE SUMMARY
+------------------------------------------------------------
+
+Provide a high-level summary of the incident.
+
+Example:
+On 05 NOV 2026, suspicious PowerShell activity was
+identified on WIN-SRV01. Investigation determined
+that an unauthorized user executed a credential
+harvesting script using a compromised account.
+
+
+2. INCIDENT DETAILS
+------------------------------------------------------------
+
+Incident Type:
+
+Examples:
+- Malware
+- Unauthorized Access
+- Privilege Escalation
+- Data Exfiltration
+- Web Compromise
+- Denial of Service
+
+Affected Systems:
+
+Affected Users:
+
+Affected Services:
+
+
+3. TIMELINE
+------------------------------------------------------------
+
+Time (UTC) | Event Description
+----------------------------------------------
+
+YYYY-MM-DD HH:MM:
+Initial Alert Received
+
+YYYY-MM-DD HH:MM:
+Investigation Started
+
+YYYY-MM-DD HH:MM:
+Malicious Activity Confirmed
+
+YYYY-MM-DD HH:MM:
+Containment Performed
+
+YYYY-MM-DD HH:MM:
+Recovery Complete
+
+
+4. DETECTION
+------------------------------------------------------------
+
+Detection Source:
+
+Examples:
+- Security Onion
+- Sysmon
+- Windows Event Log
+- IDS Alert
+- User Report
+- SIEM Alert
+
+Alert Details:
+
+Relevant Logs:
+
+Indicators of Compromise (IOCs):
+
+IPs:
+
+Domains:
+
+File Hashes:
+
+Process Names:
+
+User Accounts:
+
+
+5. ANALYSIS
+------------------------------------------------------------
+
+Summary of Findings:
+
+Evidence Collected:
+
+Commands Executed:
+
+Log Sources Reviewed:
+
+Root Cause:
+
+Attack Vector:
+
+
+6. CONTAINMENT
+------------------------------------------------------------
+
+Actions Taken:
+
+Date/Time:
+
+Responsible Person:
+
+Effectiveness:
+
+
+7. ERADICATION
+------------------------------------------------------------
+
+Malware Removed:
+[ ] Yes
+[ ] No
+
+Accounts Disabled:
+[ ] Yes
+[ ] No
+
+Persistence Removed:
+[ ] Yes
+[ ] No
+
+Details:
+
+
+8. RECOVERY
+------------------------------------------------------------
+
+Systems Restored:
+
+Validation Performed:
+
+Monitoring Added:
+
+Recovery Completion Time:
+
+
+9. IMPACT ASSESSMENT
+------------------------------------------------------------
+
+Confidentiality Impact:
+Low / Medium / High
+
+Integrity Impact:
+Low / Medium / High
+
+Availability Impact:
+Low / Medium / High
+
+Business Impact:
+
+Estimated Downtime:
+
+Data Exposure:
+
+
+10. LESSONS LEARNED
+------------------------------------------------------------
+
+What Worked Well:
+
+Challenges Encountered:
+
+Process Improvements:
+
+Technical Improvements:
+
+
+11. RECOMMENDATIONS
+------------------------------------------------------------
+
+Recommendation 1:
+
+Recommendation 2:
+
+Recommendation 3:
+
+
+12. EVIDENCE
+------------------------------------------------------------
+
+Screenshots:
+
+Log Excerpts:
+
+Hashes:
+
+PCAP Files:
+
+Other Artifacts:
+
+
+13. FINAL DISPOSITION
+------------------------------------------------------------
+
+Incident Status:
+[ ] Closed
+[ ] Monitoring
+[ ] Reopened
+
+Closure Date:
+
+Approved By:

@@ -1,0 +1,12 @@
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+try { 
+    Invoke-WebRequest -Uri 'https://github.com/UofL-Cyber-Defense/CCDC-Public/raw/refs/heads/master/palowin.zip' -UseBasicParsing -OutFile $env:TEMP\palowin.zip
+} catch {}
+
+if (-not (Test-Path $env:TEMP\palowin.zip)) {
+    Write-Host "Failed to download files"
+    return
+}
+
+Expand-Archive -Path $env:TEMP\palowin.zip -DestinationPath $env:USERPROFILE\Desktop
+rm $env:TEMP\palowin.zip

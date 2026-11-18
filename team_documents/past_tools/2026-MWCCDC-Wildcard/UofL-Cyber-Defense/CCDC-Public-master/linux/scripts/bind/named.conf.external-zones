@@ -1,0 +1,11 @@
+view "external"
+{
+	match-clients {any;};
+	allow-query {none;};
+	zone "allsafe.com" in
+	{
+		type master;
+		file "/etc/bind/zones/allsafe.com-external.db";
+		allow-update {none;};
+	};
+};

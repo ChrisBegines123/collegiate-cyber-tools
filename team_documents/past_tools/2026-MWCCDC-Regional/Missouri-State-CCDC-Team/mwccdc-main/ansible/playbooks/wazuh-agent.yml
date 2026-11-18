@@ -1,0 +1,145 @@
+---
+- name: Deploy Wazuh server
+  hosts: wazuh_servers
+  become: true
+  gather_facts: true
+  
+  vars:
+    # Server configuration
+    wazuh_version: "4.5.2"
+    wazuh_admin_user: "admin"
+    wazuh_admin_password: "SecureCCDC2025!" # Change this to a secure password
+    wazuh_dashboard_port: 443
+    wazuh_api_port: 55000
+    
+    # Resource allocation - adjust based on server specs
+    wazuh_indexer_heap_size: "4g"
+    wazuh_dashboard_heap_size: "2g"
+    wazuh_manager_heap_size: "2g"
+    
+    # Certificate information
+    wazuh_certificate_organization: "MWCCDC Team"
+    wazuh_certificate_common_name: "wazuh-server"
+  
+  pre_tasks:
+    - name: Ensure Docker is installed
+      package:
+        name: docker-ce
+        state: present
+      ignore_errors: yes
+  
+  roles:
+    - wazuh-server
+  
+  post_tasks:
+    - name: Wait for Wazuh server to be fully initialized
+      pause:
+        seconds: 60
+      
+    - name: Check Wazuh server status
+      uri:
+        url: "https://{{ ansible_host }}:{{ wazuh_api_port }}/security/user/authenticate"
+        method: GET
+        validate_certs: no
+        status_code: 401  # Authentication error is expected, but endpoint should be available
+      register: result
+      until: result.status == 401
+      retries: 30
+      delay: 10
+      ignore_errors: yes
+
+    - name: Display Wazuh server status
+      debug:
+        msg: "Wazuh server is now running at https://{{ ansible_host }}:{{ wazuh_dashboard_port }}"
+
+# Wait for server to be fully initialized before deploying agents
+- name: Pause to ensure Wazuh server is fully operational
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Wait for Wazuh server to be ready for agent connections
+      pause:
+        seconds: 120
+      when: groups['wazuh_servers'] is defined and groups['wazuh_servers'] | length > 0
+
+# Deploy to Linux agents
+- name: Deploy Wazuh agents to Linux hosts
+  hosts: linux_agents
+  become: true
+  gather_facts: true
+  
+  vars:
+    wazuh_server_ip: "{{ hostvars[groups['wazuh_servers'][0]].ansible_host }}"
+    wazuh_agent_register: true
+    wazuh_agent_service_enabled: true
+    
+    # CCDC competition specific settings
+    wazuh_agent_syscheck_frequency: 3600  # 1 hour for competition
+    wazuh_agent_rootcheck_enabled: true
+    wazuh_agent_wodle_openscap_enabled: true
+    wazuh_agent_command_monitoring_enabled: true
+    wazuh_agent_file_monitoring_enabled: true
+  
+  roles:
+    - wazuh-agent
+
+# Deploy to Windows agents
+- name: Deploy Wazuh agents to Windows hosts
+  hosts: windows_agents
+  gather_facts: true
+  
+  vars:
+    wazuh_server_ip: "{{ hostvars[groups['wazuh_servers'][0]].ansible_host }}"
+    wazuh_agent_register: true
+    wazuh_agent_service_enabled: true
+    ansible_connection: winrm
+    ansible_winrm_server_cert_validation: ignore
+    
+    # CCDC competition specific settings
+    wazuh_agent_syscheck_frequency: 3600  # 1 hour for competition
+    wazuh_agent_wodle_cis_cat_enabled: true
+    wazuh_agent_command_monitoring_enabled: true
+    wazuh_agent_file_monitoring_enabled: true
+  
+  roles:
+    - wazuh-agent
+
+# Verify deployment
+- name: Verify Wazuh deployment
+  hosts: wazuh_servers
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Check agent connection status
+      shell: >
+        docker exec wazuh-manager /var/ossec/bin/agent_control -l
+      register: agent_status
+      changed_when: false
+    
+    - name: Display connected agents
+      debug:
+        var: agent_status.stdout_lines
+    
+    - name: Check Wazuh manager status
+      shell: >
+        docker exec wazuh-manager /var/ossec/bin/wazuh-control status
+      register: manager_status
+      changed_when: false
+    
+    - name: Display Wazuh manager status
+      debug:
+        var: manager_status.stdout_lines
+    
+    - name: Display deployment summary
+      debug:
+        msg: 
+          - "========= WAZUH DEPLOYMENT SUMMARY ========="
+          - "Wazuh server: https://{{ ansible_host }}:{{ wazuh_dashboard_port }}"
+          - "Wazuh API: https://{{ ansible_host }}:{{ wazuh_api_port }}"
+          - "Username: {{ wazuh_admin_user }}"
+          - "Password: {{ wazuh_admin_password }}"
+          - "Total agents deployed: {{ groups['linux_agents'] | length + groups['windows_agents'] | length }}"
+          - "Linux agents: {{ groups['linux_agents'] | length }}"
+          - "Windows agents: {{ groups['windows_agents'] | length }}"
+          - "==========================================="

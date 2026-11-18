@@ -1,0 +1,52 @@
+limit local use of blank passwords to console only
+do not allow anonymous enumeration of SAM accounts
+Remote assistance connactions disabled
+do not display last name
+snmp trap disabled
+tcp/ip services disabled
+screen locks automatically
+audit logon set to failure
+remote desktop sharing is off
+non admins cannot access admin share or directory
+event log service enabled
+do not execute autorun commands
+DEP enabled
+behavior of the elevation prompt for admins in admin approval mode is set to prompt
+audit credential validation on failure
+passwords not stored with reversible encryption
+windows automatically checks for updates
+rdp network level authentication enabled
+	Tip: look for stickykeys backdoor
+rdp security layer set to SSL
+do not allow com port redirection
+audit computer account management on success
+everyone may not access this computer from the network
+remote desktop users are allowed to log on with remote desktop services
+system cannot be shut down without logging on
+antimalware does nto initialize known non-critical bad drivers
+no exclusions in windows defender
+LPD disabled
+infrared monitor service disabled
+audit policy changes set to success
+event log service is running
+safe browsing enabled in chrome
+https only in chrome
+sharing disabled for sabre printers
+computer account management set to success
+prevent users from installing printer drivers
+passwords must meet complexity requirements
+recovery console does not allow automatic admin login
+windows smartscreen warns or blocks
+audit logon set to success
+audit user account management set to success
+autoplay disabled
+remote registry disabled
+bluetooth support service disabled
+do not display last signed in user
+audit system integrity set to failure
+prevent users from modifying app and browser exploit protection settings
+IIS web server needs SSL connections
+audit security state change set to success
+disable sending unencrypted passwords to third-party SMB servers
+internet explorer has been installed
+audit security state change set to success

@@ -1,0 +1,39 @@
+//
+// Do any local configuration here
+//
+// Consider adding the 1918 zones here, if they are not used in your
+// organization
+//include "/etc/bind/zones.rfc1918";
+
+view "ccdcteam01" {
+	zone "ccdcteam01.internal" {  
+		type master;
+		file "/etc/bind/ccdcteam/db.ccdcteam01.internal";  
+	};
+
+	zone "ccdcteam01.user" {  
+		type master;
+		file "/etc/bind/ccdcteam/db.ccdcteam01.user";  
+	};
+
+	zone "ccdcteam01.public" {  
+	    type master;
+		file "/etc/bind/ccdcteam/db.ccdcteam01.public";  
+	};
+
+	// Reverse DNS Lookup Zones (best practice)
+	zone "0.240.20.172.in-addr.arpa" {
+		type master;
+		file "/etc/bind/ccdcrevr/db.172.20.240";
+	};
+
+	zone "0.241.20.172.in-addr.arpa" {
+		type master;
+		file "/etc/bind/ccdcrevr/db.172.20.241";
+	};
+
+	zone "0.242.20.172.in-addr.arpa" {
+		type master;
+		file "/etc/bind/ccdcrevr/db.172.20.242";
+	};
+};

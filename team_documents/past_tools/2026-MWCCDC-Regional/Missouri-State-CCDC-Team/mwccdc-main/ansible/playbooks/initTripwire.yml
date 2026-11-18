@@ -1,0 +1,10 @@
+# This playbook installs tripwire on systems
+
+# It will take configuration files and keys as signed and placed in the roles directory
+# This can cooperate with the run tripwire ansible that will run reports and place them locally.
+
+- name: Initalize the tripwire role
+  hosts: all
+  become: true
+  roles:
+    - tripwire

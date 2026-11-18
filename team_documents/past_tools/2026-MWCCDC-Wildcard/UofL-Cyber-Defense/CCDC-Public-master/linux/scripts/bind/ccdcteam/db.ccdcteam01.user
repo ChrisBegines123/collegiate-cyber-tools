@@ -1,0 +1,13 @@
+$TTL 86400
+@   IN  SOA ns1.ccdcteam01.user. admin.ccdcteam01.user. (
+            01        ; Serial
+            604800    ; Refresh
+            86400     ; Retry
+            2419200   ; Expire
+            86400 )   ; Negative Cache TTL
+;
+@       IN  NS      ns1.ccdcteam01.user.
+
+ns1         IN  A   172.20.242.10    ; Ubuntu server acting as DNS
+ad-server   IN  A   172.20.242.200   ; Active Directory server
+workstation IN  A   172.20.242.210   ; User workstation

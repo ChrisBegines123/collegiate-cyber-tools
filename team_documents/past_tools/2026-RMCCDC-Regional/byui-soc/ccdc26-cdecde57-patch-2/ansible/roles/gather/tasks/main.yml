@@ -1,0 +1,250 @@
+---
+# CCDC26 - Host Fact Gathering Role
+#
+# Collects comprehensive system information for baseline documentation
+#
+
+- name: Gather base facts
+  ansible.builtin.setup:
+    gather_subset:
+      - all
+
+# ============================================================================
+# USER INFORMATION
+# ============================================================================
+- name: Gather user list (Linux)
+  become: yes
+  ansible.builtin.getent:
+    database: passwd
+  register: user_list
+  when: ansible_os_family != 'Windows'
+
+- name: Gather group list (Linux)
+  become: yes
+  ansible.builtin.getent:
+    database: group
+  register: group_list
+  when: ansible_os_family != 'Windows'
+
+- name: Get sudo/wheel group members (Linux)
+  become: yes
+  ansible.builtin.shell: |
+    getent group sudo 2>/dev/null | cut -d: -f4 || true
+    getent group wheel 2>/dev/null | cut -d: -f4 || true
+  register: admin_users
+  changed_when: false
+  when: ansible_os_family != 'Windows'
+
+# ============================================================================
+# PACKAGE INFORMATION
+# ============================================================================
+- name: Gather installed packages
+  ansible.builtin.package_facts:
+    manager: auto
+  when: ansible_os_family in ['RedHat', 'Debian']
+
+- name: Get package details with hashes (Debian)
+  become: yes
+  ansible.builtin.shell: |
+    dpkg-query -W -f='${Package} ${Version} ${Installed-Size}\n' 2>/dev/null | head -500
+  register: deb_packages
+  changed_when: false
+  when: ansible_os_family == 'Debian'
+
+- name: Get package details with hashes (RedHat)
+  become: yes
+  ansible.builtin.shell: |
+    rpm -qa --queryformat '%{NAME} %{VERSION}-%{RELEASE} %{SIZE}\n' 2>/dev/null | head -500
+  register: rpm_packages
+  changed_when: false
+  when: ansible_os_family == 'RedHat'
+
+# ============================================================================
+# SERVICE INFORMATION
+# ============================================================================
+- name: Gather systemd services (Linux)
+  become: yes
+  ansible.builtin.shell: |
+    systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | awk '{print $1}'
+  register: running_services
+  changed_when: false
+  when: ansible_os_family != 'Windows' and ansible_service_mgr == 'systemd'
+
+- name: Gather listening ports (Linux)
+  become: yes
+  ansible.builtin.shell: |
+    ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null
+  register: listening_ports
+  changed_when: false
+  when: ansible_os_family != 'Windows'
+
+# ============================================================================
+# CRON/SCHEDULED TASKS
+# ============================================================================
+- name: Gather cron jobs (Linux)
+  become: yes
+  ansible.builtin.shell: |
+    echo "=== System Cron ==="
+    cat /etc/crontab 2>/dev/null || true
+    echo ""
+    echo "=== Cron.d ==="
+    ls -la /etc/cron.d/ 2>/dev/null || true
+    echo ""
+    echo "=== User Crons ==="
+    for user in $(cut -d: -f1 /etc/passwd); do
+      crontab -u $user -l 2>/dev/null && echo "--- $user ---"
+    done
+  register: cron_jobs
+  changed_when: false
+  when: ansible_os_family != 'Windows'
+
+# ============================================================================
+# SECURITY STATUS
+# ============================================================================
+- name: Get SELinux status (RedHat)
+  ansible.builtin.shell: getenforce 2>/dev/null || echo "Not installed"
+  register: selinux_status
+  changed_when: false
+  when: ansible_os_family == 'RedHat'
+
+- name: Get AppArmor status (Debian)
+  become: yes
+  ansible.builtin.shell: aa-status 2>/dev/null || echo "Not installed"
+  register: apparmor_status
+  changed_when: false
+  when: ansible_os_family == 'Debian'
+
+- name: Get firewall status (Linux)
+  become: yes
+  ansible.builtin.shell: |
+    if command -v ufw &>/dev/null; then
+      ufw status verbose 2>/dev/null
+    elif command -v firewall-cmd &>/dev/null; then
+      firewall-cmd --state 2>/dev/null && firewall-cmd --list-all 2>/dev/null
+    else
+      iptables -L -n 2>/dev/null | head -50
+    fi
+  register: firewall_status
+  changed_when: false
+  when: ansible_os_family != 'Windows'
+
+# ============================================================================
+# RECENT FILE CHANGES
+# ============================================================================
+- name: Find recently modified files in /etc
+  become: yes
+  ansible.builtin.find:
+    paths: "/etc"
+    file_type: file
+    age: "1d"
+    age_stamp: "mtime"
+    recurse: yes
+  register: recent_etc_files
+  when: ansible_os_family != 'Windows'
+
+- name: Find SUID binaries
+  become: yes
+  ansible.builtin.shell: |
+    find / -perm -4000 -type f 2>/dev/null | head -100
+  register: suid_binaries
+  changed_when: false
+  when: ansible_os_family != 'Windows'
+
+# ============================================================================
+# SSH KEYS
+# ============================================================================
+- name: Find authorized_keys files
+  become: yes
+  ansible.builtin.shell: |
+    find /home /root -name "authorized_keys" 2>/dev/null | while read f; do
+      echo "=== $f ==="
+      wc -l < "$f"
+    done
+  register: ssh_keys
+  changed_when: false
+  when: ansible_os_family != 'Windows'
+
+# ============================================================================
+# COMPILE FACTS
+# ============================================================================
+- name: Compile all facts (Linux)
+  ansible.builtin.set_fact:
+    host_facts:
+      hostname: "{{ ansible_facts['hostname'] }}"
+      fqdn: "{{ ansible_facts['fqdn'] | default('') }}"
+      ip_addresses: "{{ ansible_facts['all_ipv4_addresses'] | default([]) }}"
+      os_family: "{{ ansible_facts['os_family'] }}"
+      os_distribution: "{{ ansible_facts['distribution'] | default('') }} {{ ansible_facts['distribution_version'] | default('') }}"
+      kernel_version: "{{ ansible_facts['kernel'] | default('') }}"
+      architecture: "{{ ansible_facts['architecture'] | default('') }}"
+      memory_mb: "{{ ansible_facts['memtotal_mb'] | default(0) }}"
+      users: "{{ user_list.ansible_facts.getent_passwd | default({}) | dict2items | map(attribute='key') | list }}"
+      admin_users: "{{ admin_users.stdout_lines | default([]) }}"
+      running_services: "{{ running_services.stdout_lines | default([]) }}"
+      listening_ports: "{{ listening_ports.stdout_lines | default([]) }}"
+      suid_binaries: "{{ suid_binaries.stdout_lines | default([]) }}"
+      selinux_status: "{{ selinux_status.stdout | default('N/A') }}"
+      apparmor_status: "{{ apparmor_status.stdout | default('N/A') }}"
+      firewall_status: "{{ firewall_status.stdout_lines | default([]) }}"
+      recent_etc_changes: "{{ recent_etc_files.files | default([]) | length }}"
+      ssh_keys_found: "{{ ssh_keys.stdout_lines | default([]) }}"
+  when: ansible_os_family != 'Windows'
+
+# ============================================================================
+# WINDOWS GATHERING
+# ============================================================================
+- name: Gather Windows users
+  win_shell: |
+    Get-LocalUser | Select-Object Name, Enabled, LastLogon | ConvertTo-Json
+  register: win_users
+  when: ansible_os_family == 'Windows'
+
+- name: Gather Windows services
+  win_shell: |
+    Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName | ConvertTo-Json
+  register: win_services
+  when: ansible_os_family == 'Windows'
+
+- name: Gather Windows scheduled tasks
+  win_shell: |
+    Get-ScheduledTask | Where-Object {$_.State -ne 'Disabled'} | Select-Object TaskName, TaskPath, State | ConvertTo-Json
+  register: win_tasks
+  when: ansible_os_family == 'Windows'
+
+- name: Compile all facts (Windows)
+  ansible.builtin.set_fact:
+    host_facts:
+      hostname: "{{ ansible_facts['hostname'] }}"
+      ip_addresses: "{{ ansible_facts['all_ipv4_addresses'] | default([]) }}"
+      os_family: "Windows"
+      os_distribution: "{{ ansible_facts['os_name'] | default('') }}"
+      os_version: "{{ ansible_facts['os_version'] | default('') }}"
+      domain: "{{ ansible_facts['domain'] | default('') }}"
+      local_users: "{{ win_users.stdout | from_json | default([]) }}"
+      running_services: "{{ win_services.stdout | from_json | default([]) }}"
+      scheduled_tasks: "{{ win_tasks.stdout | from_json | default([]) }}"
+  when: ansible_os_family == 'Windows'
+
+# ============================================================================
+# OUTPUT
+# ============================================================================
+- name: Create output directory on controller
+  local_action:
+    module: file
+    path: "./collected_facts"
+    state: directory
+  run_once: true
+
+- name: Write facts to JSON file
+  local_action:
+    module: copy
+    content: "{{ host_facts | to_nice_json }}"
+    dest: "./collected_facts/{{ inventory_hostname }}.json"
+
+- name: Display summary
+  debug:
+    msg: |
+      Host: {{ host_facts.hostname }}
+      OS: {{ host_facts.os_distribution | default(host_facts.os_family) }}
+      IPs: {{ host_facts.ip_addresses | join(', ') }}
+      Facts saved to: ./collected_facts/{{ inventory_hostname }}.json

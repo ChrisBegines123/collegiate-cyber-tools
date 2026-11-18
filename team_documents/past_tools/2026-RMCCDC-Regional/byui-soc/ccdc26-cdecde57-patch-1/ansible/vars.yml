@@ -1,0 +1,156 @@
+# CCDC26 Rocky Mountain Qualifier - Ansible Variables
+# ==================================================
+
+###############################################################################
+# TEAM CONFIGURATION - TEAM 2 (BYU)
+###############################################################################
+team_number: 2
+new_password: "CHANGE_ME_NOW!"  # Set your competition password
+
+###############################################################################
+# SPLUNK CONFIGURATION
+###############################################################################
+splunk_server: "172.20.242.20"
+splunk_port: "9997"
+
+###############################################################################
+# DEFAULT CREDENTIALS (for reference - change immediately!)
+###############################################################################
+default_linux_password: "changeme"
+default_windows_password: "!Password123"
+default_splunk_root_password: "changemenow"
+default_paloalto_password: "Changeme123"
+default_cisco_password: "!Changeme123"
+default_vyos_password: "changeme"
+
+###############################################################################
+# COMPETITION USERS TO CREATE
+###############################################################################
+competition_users:
+  - name: ccdcadmin
+    groups:
+      - sudo
+      - wheel
+    admin: true
+  - name: ccdcuser
+    groups: []
+    admin: false
+
+###############################################################################
+# TOOLKIT DEPLOYMENT
+###############################################################################
+# Repository URL for git-based deployment (update with your actual repo)
+repo_url: "https://github.com/YOUR_REPO/ccdc26.git"
+repo_branch: "main"
+toolkit_dest: "/opt/ccdc26"
+windows_toolkit_dest: "C:\\ccdc26"
+
+###############################################################################
+# SSH CONFIGURATION
+###############################################################################
+ssh_port: 22
+ssh_allow_root: false
+ssh_password_auth: true  # Keep true initially for Ansible access
+
+###############################################################################
+# HARDENING OPTIONS
+###############################################################################
+harden_options:
+  run_firewall: true
+  run_services: true
+  run_users: true
+  run_ssh: true
+  run_kernel: true
+  run_permissions: true
+
+###############################################################################
+# SERVICE PORTS (DO NOT CHANGE THESE - SCORED!)
+###############################################################################
+scored_ports:
+  http: 80
+  https: 443
+  smtp: 25
+  pop3: 110
+  dns: 53
+
+# Additional ports to allow
+allowed_ports:
+  common:
+    - 22    # SSH
+  linux_zone:
+    - 80    # HTTP
+    - 443   # HTTPS
+    - 25    # SMTP
+    - 110   # POP3
+    - 143   # IMAP (maybe)
+    - 993   # IMAPS (maybe)
+  windows_zone:
+    - 80    # HTTP
+    - 443   # HTTPS
+    - 53    # DNS
+    - 21    # FTP
+    - 3389  # RDP (disable after setup)
+    - 5985  # WinRM (for Ansible)
+
+###############################################################################
+# SYSTEM IP ADDRESSES (STATIC - DO NOT CHANGE)
+###############################################################################
+systems:
+  linux:
+    ecom:
+      name: "Ubuntu Ecom"
+      ip: "172.20.242.30"
+      services: ["http", "https"]
+      os: "Ubuntu 24.04"
+    webmail:
+      name: "Fedora Webmail"
+      ip: "172.20.242.40"
+      services: ["smtp", "pop3"]
+      os: "Fedora 42"
+    splunk:
+      name: "Splunk Server"
+      ip: "172.20.242.20"
+      services: ["splunk"]
+      os: "Oracle Linux 9.2"
+    ubuntu_wks:
+      name: "Ubuntu Workstation"
+      ip: "dhcp"
+      services: []
+      os: "Ubuntu 24.04 Desktop"
+  windows:
+    ad_dns:
+      name: "AD/DNS Server"
+      ip: "172.20.240.102"
+      services: ["dns", "ad"]
+      os: "Server 2019"
+    web:
+      name: "Web Server"
+      ip: "172.20.240.101"
+      services: ["http", "https"]
+      os: "Server 2019"
+    ftp:
+      name: "FTP Server"
+      ip: "172.20.240.104"
+      services: ["ftp"]
+      os: "Server 2022"
+    win11_wks:
+      name: "Windows 11 Workstation"
+      ip: "172.20.240.100"
+      services: []
+      os: "Windows 11 24H2"
+  network:
+    paloalto:
+      name: "Palo Alto Firewall"
+      mgmt_ip: "172.20.242.150"
+      inside: "172.20.242.254"
+      outside: "172.16.101.254"
+    cisco_ftd:
+      name: "Cisco FTD Firewall"
+      mgmt_ip: "172.20.240.200"
+      inside: "172.20.240.254"
+      outside: "172.16.102.254"
+    vyos:
+      name: "VyOS Router"
+      external: "172.31.22.2"  # Team 2
+      net1: "172.16.101.1"
+      net2: "172.16.102.1"

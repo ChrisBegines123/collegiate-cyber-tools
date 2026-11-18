@@ -1,0 +1,22 @@
+# Semaphore can be used for easy integration into ansible playbooks
+# This playbook deploys their docker-compose to a host and runs it 
+- name: Deploys semaphore ui via a template 
+  hosts: localhost
+  vars: 
+    SEMAPHORE_ACCESS_KEY_ENCRYPTION: to-be-generated
+    SEMAPHORE_DB_USER: semaphore
+    SEMAPHORE_DB_PASS: semaphore
+    #User
+    SEMAPHORE_ADMIN_PASSWORD: changeme
+    SEMAPHORE_ADMIN_NAME: admin
+  tasks: 
+  - name: Template docker compose file from docs 
+    ansible.builtin.template:
+      src: docker-compose.yml.j2 
+      dest: /opt/semaphore
+      creates: /opt/semaphore
+
+  - name: Compose the project 
+    community.docker.docker_compose_v2:
+      project_src: /opt/semaphore 
+      state: present 

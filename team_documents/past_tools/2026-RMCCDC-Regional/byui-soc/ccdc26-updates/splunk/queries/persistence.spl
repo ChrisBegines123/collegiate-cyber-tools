@@ -1,0 +1,257 @@
+` ============================================================================= `
+` CCDC26 - PERSISTENCE MECHANISM DETECTION QUERIES                            `
+` Paste these directly into Splunk Search                                      `
+` ============================================================================= `
+
+
+` --------------------------------------------------------------------------- `
+` WINDOWS REGISTRY PERSISTENCE                                                 `
+` --------------------------------------------------------------------------- `
+
+### Registry Run Key Modification (Sysmon)
+### Description: Detects Sysmon Event 13 (Registry Value Set) on Run/RunOnce keys used for auto-start persistence
+### MITRE ATT&CK: T1547.001 - Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder
+### Severity: CRITICAL
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=13 earliest=-24h
+| where match(TargetObject, "(?i)(\\CurrentVersion\\Run|\\CurrentVersion\\RunOnce|\\CurrentVersion\\RunServices|\\CurrentVersion\\Policies\\Explorer\\Run)")
+| table _time, host, User, Image, TargetObject, Details
+| sort -_time
+
+### Image File Execution Options (IFEO) Debugger
+### Description: Detects registry modification of IFEO Debugger keys used to hijack process execution
+### MITRE ATT&CK: T1546.012 - Event Triggered Execution: Image File Execution Options Injection
+### Severity: CRITICAL
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=13 earliest=-24h
+| where match(TargetObject, "(?i)Image File Execution Options.*Debugger")
+| table _time, host, User, Image, TargetObject, Details
+| sort -_time
+
+### Winlogon Helper DLL
+### Description: Detects modifications to Winlogon registry keys for persistence (Shell, Userinit, Notify)
+### MITRE ATT&CK: T1547.004 - Boot or Logon Autostart Execution: Winlogon Helper DLL
+### Severity: CRITICAL
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=13 earliest=-24h
+| where match(TargetObject, "(?i)(\\Winlogon\\Shell|\\Winlogon\\Userinit|\\Winlogon\\Notify)")
+| table _time, host, User, Image, TargetObject, Details
+| sort -_time
+
+### AppInit DLLs
+### Description: Detects modification of AppInit_DLLs registry key for DLL injection persistence
+### MITRE ATT&CK: T1546.010 - Event Triggered Execution: AppInit DLLs
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=13 earliest=-24h
+| where match(TargetObject, "(?i)AppInit_DLLs")
+| table _time, host, User, Image, TargetObject, Details
+| sort -_time
+
+### All Suspicious Registry Modifications (Sysmon)
+### Description: Broad detection of registry changes to common persistence locations
+### MITRE ATT&CK: T1112 - Modify Registry
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=13 earliest=-24h
+| where match(TargetObject, "(?i)(\\Run\\|\\RunOnce\\|\\Explorer\\Shell|\\Winlogon\\|\\Image File Execution|\\AppInit|\\Session Manager\\BootExecute|\\Services\\)")
+| stats count by TargetObject, host, User, Image
+| sort -count
+| table host, User, Image, TargetObject, count
+
+
+` --------------------------------------------------------------------------- `
+` WMI EVENT SUBSCRIPTION PERSISTENCE                                           `
+` --------------------------------------------------------------------------- `
+
+### WMI Event Consumer Created (Sysmon)
+### Description: Detects Sysmon Events 19/20/21 for WMI permanent event subscriptions used for persistence
+### MITRE ATT&CK: T1546.003 - Event Triggered Execution: Windows Management Instrumentation Event Subscription
+### Severity: CRITICAL
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" (EventCode=19 OR EventCode=20 OR EventCode=21) earliest=-24h
+| eval wmi_type=case(EventCode==19,"WmiEventFilter",EventCode==20,"WmiEventConsumer",EventCode==21,"WmiEventConsumerToFilter")
+| table _time, host, User, wmi_type, Name, Query, Destination, Consumer, Filter
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` WINDOWS SCHEDULED TASK PERSISTENCE                                           `
+` --------------------------------------------------------------------------- `
+
+### New Scheduled Task Created (Event Log)
+### Description: Detects new scheduled task creation via Windows Security Event 4698
+### MITRE ATT&CK: T1053.005 - Scheduled Task/Job: Scheduled Task
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4698 earliest=-24h
+| table _time, host, SubjectUserName, TaskName, TaskContent
+| sort -_time
+
+### Scheduled Task Created via Command Line
+### Description: Detects schtasks.exe /create commands which may indicate attacker-created persistence
+### MITRE ATT&CK: T1053.005 - Scheduled Task/Job: Scheduled Task
+### Severity: HIGH
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4688 earliest=-24h
+| where match(NewProcessName, "(?i)schtasks\.exe") AND match(CommandLine, "(?i)/create")
+| table _time, host, SubjectUserName, CommandLine
+| sort -_time
+
+### Scheduled Task with Suspicious Actions
+### Description: Detects scheduled tasks that run PowerShell, cmd, or executables from suspicious paths
+### MITRE ATT&CK: T1053.005 - Scheduled Task/Job: Scheduled Task
+### Severity: CRITICAL
+index=windows-security sourcetype="WinEventLog:Security" EventCode=4698 earliest=-7d
+| where match(TaskContent, "(?i)(powershell|cmd\.exe|wscript|cscript|mshta|certutil|bitsadmin|\\temp\\|\\tmp\\|\\appdata\\|\\public\\)")
+| table _time, host, SubjectUserName, TaskName, TaskContent
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` WINDOWS SERVICE PERSISTENCE                                                  `
+` --------------------------------------------------------------------------- `
+
+### New Service Installed
+### Description: All new Windows services -- review for suspicious service names and paths
+### MITRE ATT&CK: T1543.003 - Create or Modify System Process: Windows Service
+### Severity: HIGH
+index=windows-system sourcetype="WinEventLog:System" EventCode=7045 earliest=-24h
+| table _time, host, ServiceName, ImagePath, ServiceType, StartType
+| sort -_time
+
+### Service with Suspicious Binary Path
+### Description: Detects services pointing to temp/user directories or using cmd/powershell wrappers
+### MITRE ATT&CK: T1543.003 - Create or Modify System Process: Windows Service
+### Severity: CRITICAL
+index=windows-system sourcetype="WinEventLog:System" EventCode=7045 earliest=-7d
+| where match(ImagePath, "(?i)(\\temp\\|\\tmp\\|\\users\\|\\appdata\\|\\public\\|\\downloads\\|cmd\.exe|powershell|\.bat|\.vbs|\.js|\.ps1|%comspec%)")
+| table _time, host, ServiceName, ImagePath, ServiceType, StartType
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` STARTUP FOLDER PERSISTENCE                                                   `
+` --------------------------------------------------------------------------- `
+
+### Startup Folder File Creation (Sysmon)
+### Description: Detects file creation events in Windows Startup folders
+### MITRE ATT&CK: T1547.001 - Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=11 earliest=-24h
+| where match(TargetFilename, "(?i)(\\Start Menu\\Programs\\Startup\\|\\Startup\\)")
+| table _time, host, User, Image, TargetFilename
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` POWERSHELL PROFILE PERSISTENCE                                               `
+` --------------------------------------------------------------------------- `
+
+### PowerShell Profile Modified (Sysmon)
+### Description: Detects modification of PowerShell profile files which execute on every PowerShell session
+### MITRE ATT&CK: T1546.013 - Event Triggered Execution: PowerShell Profile
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" (EventCode=11 OR EventCode=2) earliest=-24h
+| where match(TargetFilename, "(?i)(profile\.ps1|Microsoft\.PowerShell_profile\.ps1)")
+| table _time, host, User, Image, TargetFilename
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` DLL HIJACK / SIDE-LOADING                                                    `
+` --------------------------------------------------------------------------- `
+
+### Unsigned DLL Loaded from Unusual Path (Sysmon)
+### Description: Detects DLL loads from temp/user directories which may indicate DLL side-loading
+### MITRE ATT&CK: T1574.001 - Hijack Execution Flow: DLL Search Order Hijacking
+### Severity: HIGH
+index=windows-sysmon sourcetype="WinEventLog:Sysmon" EventCode=7 earliest=-4h
+| where match(ImageLoaded, "(?i)(\\temp\\|\\tmp\\|\\users\\.*\\appdata\\|\\public\\|\\downloads\\)")
+| where Signed="false" OR SignatureStatus!="Valid"
+| table _time, host, Image, ImageLoaded, Signed, SignatureStatus
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` LINUX PERSISTENCE                                                            `
+` --------------------------------------------------------------------------- `
+
+### SSH Authorized Keys Modified
+### Description: Detects changes to SSH authorized_keys files enabling key-based backdoor access
+### MITRE ATT&CK: T1098.004 - Account Manipulation: SSH Authorized Keys
+### Severity: CRITICAL
+index=linux-security (sourcetype=linux_secure OR sourcetype=linux_audit) "authorized_keys" earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Authorized Keys via Integrity Monitor
+### Description: Detects authorized_keys changes from the integrity monitoring system
+### MITRE ATT&CK: T1098.004 - Account Manipulation: SSH Authorized Keys
+### Severity: CRITICAL
+index=linux-os sourcetype=syslog "integrity-monitor" "authorized_keys" earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Cron Persistence
+### Description: Detects crontab modifications which can provide persistent command execution
+### MITRE ATT&CK: T1053.003 - Scheduled Task/Job: Cron
+### Severity: HIGH
+index=linux-security sourcetype=linux_secure "crontab" earliest=-24h
+| rex "crontab.*\((?<cron_user>\S+)\)\s+(?<cron_action>\S+)"
+| table _time, host, cron_user, cron_action
+| sort -_time
+
+### New Cron Files in /etc/cron.d
+### Description: Detects new cron job files dropped in system cron directories
+### MITRE ATT&CK: T1053.003 - Scheduled Task/Job: Cron
+### Severity: HIGH
+index=linux-os sourcetype=syslog "integrity-monitor" ("/etc/cron" OR "/var/spool/cron") "NEW FILE" earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Systemd Service Created
+### Description: Detects creation of new systemd service files (persistent daemon installation)
+### MITRE ATT&CK: T1543.002 - Create or Modify System Process: Systemd Service
+### Severity: CRITICAL
+index=linux-os sourcetype=syslog "integrity-monitor" "/etc/systemd" ("NEW FILE" OR "MODIFIED") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Systemd Service File in Unusual Location
+### Description: Alternative detection for systemd service creation via audit or syslog
+### MITRE ATT&CK: T1543.002 - Create or Modify System Process: Systemd Service
+### Severity: CRITICAL
+index=linux-security sourcetype=linux_audit "\.service" ("/etc/systemd/" OR "/usr/lib/systemd/" OR "/run/systemd/") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### Shell Profile / RC File Modified
+### Description: Detects modifications to shell profile files (.bashrc, .profile, .bash_profile) for login persistence
+### MITRE ATT&CK: T1546.004 - Event Triggered Execution: Unix Shell Configuration Modification
+### Severity: HIGH
+index=linux-os sourcetype=syslog "integrity-monitor" (".bashrc" OR ".profile" OR ".bash_profile" OR "/etc/profile" OR "/etc/bash.bashrc") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+### LD_PRELOAD / LD Library Path Hijack
+### Description: Detects modification of ld.so.preload or changes to /etc/ld.so.conf.d for shared library hijacking
+### MITRE ATT&CK: T1574.006 - Hijack Execution Flow: Dynamic Linker Hijacking
+### Severity: CRITICAL
+index=linux-os sourcetype=syslog "integrity-monitor" ("ld.so.preload" OR "ld.so.conf") earliest=-24h
+| table _time, host, _raw
+| sort -_time
+
+
+` --------------------------------------------------------------------------- `
+` COMBINED PERSISTENCE OVERVIEW                                                `
+` --------------------------------------------------------------------------- `
+
+### All Windows Persistence Events Timeline
+### Description: Combined timeline of all Windows persistence-related events for holistic hunting
+### MITRE ATT&CK: T1547 - Boot or Logon Autostart Execution
+### Severity: LOW
+(index=windows-sysmon sourcetype="WinEventLog:Sysmon" (EventCode=13 OR EventCode=11 OR EventCode=19 OR EventCode=20 OR EventCode=21)) OR (index=windows-system sourcetype="WinEventLog:System" EventCode=7045) OR (index=windows-security sourcetype="WinEventLog:Security" EventCode=4698) earliest=-24h
+| eval category=case(match(sourcetype,"Sysmon") AND EventCode==13,"Registry", match(sourcetype,"Sysmon") AND EventCode==11,"File Created", match(sourcetype,"Sysmon") AND (EventCode==19 OR EventCode==20 OR EventCode==21),"WMI Subscription", match(sourcetype,"System") AND EventCode==7045,"New Service", match(sourcetype,"Security") AND EventCode==4698,"Scheduled Task", true(),"Other")
+| table _time, host, category, User, Image, TargetObject, TargetFilename, ServiceName, TaskName
+| sort -_time
+
+### All Linux Persistence Events Timeline
+### Description: Combined timeline of all Linux persistence-related events
+### MITRE ATT&CK: T1053.003 - Scheduled Task/Job: Cron
+### Severity: LOW
+(index=linux-security sourcetype=linux_secure ("crontab" OR "authorized_keys" OR "useradd")) OR (index=linux-os sourcetype=syslog "integrity-monitor" ("systemd" OR "cron" OR "authorized_keys" OR ".bashrc" OR ".profile" OR "ld.so")) earliest=-24h
+| table _time, host, _raw
+| sort -_time

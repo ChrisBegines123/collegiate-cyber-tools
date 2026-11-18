@@ -1,0 +1,13 @@
+
+- name: Install and setup Suricata IDS
+  hosts: 
+  become: true
+  vars:
+  tasks:
+    - name: Install Suricata
+        apt:
+          name:
+            - suricata        
+            - suricata-update
+        state: present
+        

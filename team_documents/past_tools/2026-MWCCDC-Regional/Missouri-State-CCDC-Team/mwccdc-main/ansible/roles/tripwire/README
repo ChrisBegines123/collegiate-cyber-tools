@@ -1,0 +1,26 @@
+# Tripwire Ansible Role
+This role was Developed by Tyler Olson for use by the Missouri State University CCDC team. The goal of this role is to: 
+
+- Establish a tripwire agent for tracking important file changes on hosts in the competition environment. 
+- Automate the install process for those unfamiliar with the install process and make it as seamless as possible. 
+
+## Setup 
+Ensure that the ansible vault is configured: 
+```sh
+ansible-vault encrypt_string 'SuperSecretPassphrase' --name 'tripwire_local_key_pass'
+```
+
+### Example Playbook: 
+initTripwire.yml
+```sh
+- name: Initalize the tripwire role
+  hosts: all
+  become: true
+  roles:
+    - tripwire
+```
+
+Run the playbook:
+```sh
+ansible-playbook ./init-Tripwire.yml --ask-vault-pass
+```

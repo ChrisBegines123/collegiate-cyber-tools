@@ -1,0 +1,54 @@
+options 
+{
+    directory "/var/cache/bind";
+    auth-nxdomain no;
+    // listen-on-v6 {none;};
+    querylog yes;
+    statistics-file "/var/cache/bind/named.stats";
+    rrset-order {order cyclic;};
+
+    forwarders {
+        172.20.242.200;  // Google DNS
+    };
+
+    allow-query { 
+	    localhost; 
+	    172.20.240.0/24; // Internal Zone
+	    172.20.241.0/24; // Public Zone
+	    172.20.242.0/24; // User Zone
+    };
+
+	allow-transfer { 
+	    localhost; 
+	    172.20.240.0/24; // Internal Zone
+	    172.20.241.0/24; // Public Zone
+	    172.20.242.0/24; // User Zone
+    };
+    
+    allow-recursion { 
+	    localhost; 
+	    172.20.240.0/24; // Internal Zone
+	    172.20.241.0/24; // Public Zone
+	    172.20.242.0/24; // User Zone
+    };
+
+    recursion yes; // allow queries from higher DNS servers
+    dnssec-validation auto;
+
+    // listen-on { any; };
+};
+
+logging
+{
+	channel b_query
+	{
+		file "/var/log/bind9/query.log";
+		print-time yes;
+		severity info;
+	};
+	
+	category queries
+	{
+		b_query;
+	};
+};

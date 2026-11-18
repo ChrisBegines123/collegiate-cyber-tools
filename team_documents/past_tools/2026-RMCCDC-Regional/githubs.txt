@@ -1,0 +1,3 @@
+https://github.com/BYU-CCDC/public-ccdc-resources
+https://github.com/byui-soc/ccdc26
+https://github.com/SUU-Cybersecurity-Club/CCDC-Scripts

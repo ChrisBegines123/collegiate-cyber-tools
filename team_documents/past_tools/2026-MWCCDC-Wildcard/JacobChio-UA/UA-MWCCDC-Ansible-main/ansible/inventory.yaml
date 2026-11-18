@@ -1,0 +1,32 @@
+LinuxServers:
+   hosts:
+    ubuntuEcom:
+      vars:
+        public: 172.25.20x.11
+      ansible_host: 172.20.242.30
+      ansible_user: sysadmin
+      ansible_password: changeme
+      ansible_become_password: changeme
+    fedoraWebmail:
+      vars:
+        public: 172.25.20x.39
+      ansible_host: 172.20.242.30
+      ansible_user: sysadmin
+      ansible_password: changeme
+      ansible_become_password: changeme
+    splunk:
+      vars:
+        public:
+      ansible_host: 172.20.242.30
+      ansible_user: sysadmin
+      ansible_password: changeme
+      ansible_become_password: changeme
+windowsServers:
+  hosts:
+    win10:
+      ansible_host: 
+test:
+  hosts:
+    10.1.1.132:
+      ansible_user: zippy
+      ansible_private_key_file: /home/zippy/.ssh/id_ed25519

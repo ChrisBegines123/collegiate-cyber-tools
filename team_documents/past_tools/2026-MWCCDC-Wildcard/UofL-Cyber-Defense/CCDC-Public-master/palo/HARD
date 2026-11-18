@@ -1,0 +1,107 @@
+configure
+
+###############################################################
+# 1. PASSWORD COMPLEXITY ENFORCEMENT (NEW)
+###############################################################
+set deviceconfig system password-complexity enable yes
+set deviceconfig system password-complexity minimum-length 12
+set deviceconfig system password-complexity minimum-uppercase 1
+set deviceconfig system password-complexity minimum-lowercase 1
+set deviceconfig system password-complexity minimum-numeric 1
+set deviceconfig system password-complexity minimum-special 1
+
+
+###############################################################
+# 2. LOGIN BANNER (NEW)
+###############################################################
+set deviceconfig system login-banner "WARNING: This system is for authorized use only. Unauthorized access or use is prohibited and may be monitored."
+
+
+###############################################################
+# 3. HARD DNS / ANTI-SPYWARE SINKHOLE (NEW) - Custom, not default - 
+###############################################################
+set profiles anti-spyware CCDC-Spyware rule default-action sinkhole
+set profiles anti-spyware CCDC-Spyware sinkhole enable yes
+set profiles anti-spyware CCDC-Spyware sinkhole ipv4-address 72.5.65.111
+set profiles anti-spyware CCDC-Spyware sinkhole ipv6-address ::1
+
+
+###############################################################
+# 4. SECURITY PROFILE GROUPS (NEW)
+###############################################################
+# Antivirus
+set profiles antivirus CCDC-AV wildfire-action block
+set profiles antivirus CCDC-AV rules default action block
+
+# Vulnerability Protection
+set profiles vulnerability CCDC-Vuln rules default action block
+
+# URL Filtering
+set profiles url-filtering CCDC-URL block categories malware
+set profiles url-filtering CCDC-URL block categories phishing
+set profiles url-filtering CCDC-URL block categories command-and-control
+
+
+###############################################################
+# 5. APPLY PROFILE GROUP TO RULES (NEW) - Attach all strickt profiles - 
+###############################################################
+set profiles profile-group CCDC-Strict antivirus CCDC-AV
+set profiles profile-group CCDC-Strict spyware CCDC-Spyware
+set profiles profile-group CCDC-Strict vulnerability CCDC-Vuln
+set profiles profile-group CCDC-Strict url-filtering CCDC-URL
+
+//APPLY STRICT PROFILE GROUP TO ALL RULES
+# Apply to every rule except intrazone-default/interzone-default
+set rulebase security rules any profile-setting group CCDC-Strict
+
+
+###############################################################
+# 6. DEFAULT PROFILE ACTIONS TO BLOCK (NEW)
+###############################################################
+set profiles antivirus default action block
+set profiles vulnerability default action block
+set profiles spyware default action block
+set profiles url-filtering default action block
+
+
+###############################################################
+# 7. ZONE PROTECTION PROFILES (NEW) - CIS Style, Safe Defaults -
+###############################################################
+set profiles zone-protection CCDC-ZP flood tcp-syn enable yes
+set profiles zone-protection CCDC-ZP flood udp enable yes
+set profiles zone-protection CCDC-ZP flood icmp enable yes
+set profiles zone-protection CCDC-ZP reconnaissance enable yes
+set profiles zone-protection CCDC-ZP packet-based-attack enable yes
+
+# Apply to all zones
+set network zone trust zone-protection-profile CCDC-ZP
+set network zone untrust zone-protection-profile CCDC-ZP
+
+
+###############################################################
+# 8. LOGGING 
+###############################################################
+set rulebase security rules any log-start yes
+set rulebase security rules any log-end yes
+
+###############################################################
+# 9. ADMIN LOCKDOWN
+###############################################################
+set deviceconfig system idle-timeout 10
+set deviceconfig system max-login-attempts 3
+
+###############################################################
+# 10. DISABLE LEGACY MANAGEMENT
+###############################################################
+set deviceconfig system service disable-telnet yes
+set deviceconfig system service disable-http yes
+set deviceconfig system service disable-snmp yes
+
+###############################################################
+# 11. RESTRICT MANAGEMENT ACCESS
+###############################################################
+set deviceconfig system permitted-ip <your-admin-ip>
+
+
+commit
+exit

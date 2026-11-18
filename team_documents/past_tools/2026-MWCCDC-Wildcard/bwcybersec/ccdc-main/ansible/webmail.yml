@@ -1,0 +1,56 @@
+---
+- name: webmail tasks
+  hosts: webmail
+  become: true
+
+  tasks:
+    - name: set webmail hostname
+      shell: echo "webmail01.{{ domain }}" > /etc/hostname
+      args:
+        executable: /bin/bash
+
+    - name: set env
+      shell: |
+        echo "ZDS_TYPE=webmail" >> /etc/profile
+        echo "webmail" > /var/zds/zds_type
+      args:
+        executable: /bin/bash 
+
+    - name: refresh repos
+      package:
+        update_cache: true
+
+    - name: install packages
+      package: 
+        name:
+          - git
+          - curl
+          - vim
+          - net-snmp
+          - net-snmp-utils
+          - nmap
+          - nmap-ncat
+          - tcpdump
+          - audit
+          - chrony
+          - xdp-tools
+          - lynis
+          - lsof
+          - tmux
+          - gdb
+          - htop
+        state: latest
+
+    - name: reinstall packages
+      shell: dnf reinstall -y pam openssh-server coreutils
+      args:
+        executable: /bin/bash
+
+    - name: disable firewall
+      shell: |
+        systemctl stop --now firewalld
+        systemctl disable firewalld
+      args:
+        executable: /bin/bash
+
+

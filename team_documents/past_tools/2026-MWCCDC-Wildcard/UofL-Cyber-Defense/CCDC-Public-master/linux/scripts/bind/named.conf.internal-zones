@@ -1,0 +1,15 @@
+view "internal"
+{
+	match-clients 
+	{
+		localhost;
+		172.20.241.0/24; // public zone
+	};
+	
+	zone "allsafe.com" in
+	{
+		type master;
+		file "/etc/bind/zones/allsafe.com-internal.db";
+	};
+	#include "/etc/bind/named.conf.default-zones";
+};

@@ -1,0 +1,433 @@
+---
+# CCDC26 - Deploy Splunk Forwarders to Competition Splunk Server
+# Competition SIEM for log collection and analysis
+#
+# Usage:
+#   ansible-playbook -i inventory.ini deploy_splunk_forwarders.yml
+#
+# Competition Splunk Server: 172.20.242.20:9997
+
+- name: Deploy Splunk forwarder to Linux hosts
+  hosts: linux_forwarders
+  become: yes
+  gather_facts: yes
+  vars:
+    splunk_server: "172.20.242.20"
+    splunk_port: "9997"
+    splunk_version: "10.2.0"
+    splunk_build: "d749cb17ea65"
+    splunk_home: "/opt/splunkforwarder"
+  tasks:
+    - name: Check if Splunk forwarder is already installed
+      stat:
+        path: "{{ splunk_home }}/bin/splunk"
+      register: splunk_installed
+
+    - name: Create temp directory
+      file:
+        path: /tmp/splunk_install
+        state: directory
+        mode: '0755'
+      when: not splunk_installed.stat.exists
+
+    # Debian/Ubuntu installation
+    - name: Download Splunk UF for Debian/Ubuntu
+      get_url:
+        url: "https://download.splunk.com/products/universalforwarder/releases/{{ splunk_version }}/linux/splunkforwarder-{{ splunk_version }}-{{ splunk_build }}-linux-amd64.deb"
+        dest: /tmp/splunk_install/splunkforwarder.deb
+        mode: '0644'
+        timeout: 120
+      when: 
+        - not splunk_installed.stat.exists
+        - ansible_os_family == "Debian"
+      register: deb_download
+
+    - name: Install Splunk UF on Debian/Ubuntu
+      apt:
+        deb: /tmp/splunk_install/splunkforwarder.deb
+        state: present
+      when: 
+        - not splunk_installed.stat.exists
+        - ansible_os_family == "Debian"
+        - deb_download is succeeded
+      register: deb_install
+
+    # RHEL/CentOS/Fedora installation
+    - name: Download Splunk UF for RHEL/CentOS/Fedora
+      get_url:
+        url: "https://download.splunk.com/products/universalforwarder/releases/{{ splunk_version }}/linux/splunkforwarder-{{ splunk_version }}-{{ splunk_build }}.x86_64.rpm"
+        dest: /tmp/splunk_install/splunkforwarder.rpm
+        mode: '0644'
+        timeout: 120
+      when: 
+        - not splunk_installed.stat.exists
+        - ansible_os_family == "RedHat"
+      register: rpm_download
+
+    - name: Install Splunk UF on RHEL/CentOS/Fedora
+      shell: rpm -i /tmp/splunk_install/splunkforwarder.rpm
+      args:
+        creates: "{{ splunk_home }}/bin/splunk"
+      when: 
+        - not splunk_installed.stat.exists
+        - ansible_os_family == "RedHat"
+        - rpm_download is succeeded
+      register: rpm_install
+
+    # Verify installation succeeded
+    - name: Verify Splunk binary exists after installation
+      stat:
+        path: "{{ splunk_home }}/bin/splunk"
+      register: splunk_binary_check
+
+    - name: Fail if Splunk binary not found
+      fail:
+        msg: "Splunk installation failed - binary not found at {{ splunk_home }}/bin/splunk"
+      when: not splunk_binary_check.stat.exists
+
+    - name: Create Splunk local config directory
+      file:
+        path: "{{ splunk_home }}/etc/system/local"
+        state: directory
+        mode: '0700'
+
+    - name: Configure outputs.conf
+      copy:
+        dest: "{{ splunk_home }}/etc/system/local/outputs.conf"
+        content: |
+          [tcpout]
+          defaultGroup = competition_splunk
+
+          [tcpout:competition_splunk]
+          server = {{ splunk_server }}:{{ splunk_port }}
+          compressed = true
+        mode: '0600'
+
+    - name: Configure inputs.conf
+      copy:
+        dest: "{{ splunk_home }}/etc/system/local/inputs.conf"
+        content: |
+          [default]
+          host = {{ ansible_hostname }}
+
+          # Security logs
+          [monitor:///var/log/auth.log]
+          disabled = false
+          sourcetype = linux_secure
+          index = linux-security
+
+          [monitor:///var/log/secure]
+          disabled = false
+          sourcetype = linux_secure
+          index = linux-security
+
+          [monitor:///var/log/audit/audit.log]
+          disabled = false
+          sourcetype = linux_audit
+          index = linux-security
+
+          [monitor:///var/log/fail2ban.log]
+          disabled = false
+          sourcetype = fail2ban
+          index = linux-security
+
+          # System logs
+          [monitor:///var/log/syslog]
+          disabled = false
+          sourcetype = syslog
+          index = linux-os
+
+          [monitor:///var/log/messages]
+          disabled = false
+          sourcetype = syslog
+          index = linux-os
+
+          [monitor:///var/log/kern.log]
+          disabled = false
+          sourcetype = linux_kernel
+          index = linux-os
+
+          [monitor:///var/log/cron*]
+          disabled = false
+          sourcetype = cron
+          index = linux-os
+
+          # Web logs
+          [monitor:///var/log/apache2/*access*.log]
+          disabled = false
+          sourcetype = access_combined
+          index = linux-web
+
+          [monitor:///var/log/apache2/*error*.log]
+          disabled = false
+          sourcetype = apache_error
+          index = linux-web
+
+          [monitor:///var/log/httpd/*access*.log]
+          disabled = false
+          sourcetype = access_combined
+          index = linux-web
+
+          [monitor:///var/log/httpd/*error*.log]
+          disabled = false
+          sourcetype = apache_error
+          index = linux-web
+
+          [monitor:///var/log/nginx/access.log]
+          disabled = false
+          sourcetype = access_combined
+          index = linux-web
+
+          [monitor:///var/log/nginx/error.log]
+          disabled = false
+          sourcetype = nginx_error
+          index = linux-web
+
+          # Database logs
+          [monitor:///var/log/mysql/*.log]
+          disabled = false
+          sourcetype = mysql_error
+          index = linux-database
+
+          [monitor:///var/log/mariadb/*.log]
+          disabled = false
+          sourcetype = mysql_error
+          index = linux-database
+
+          [monitor:///var/log/postgresql/*.log]
+          disabled = false
+          sourcetype = postgresql
+          index = linux-database
+
+          # Mail logs
+          [monitor:///var/log/mail.log]
+          disabled = false
+          sourcetype = sendmail
+          index = linux-mail
+
+          [monitor:///var/log/maillog]
+          disabled = false
+          sourcetype = sendmail
+          index = linux-mail
+
+          # DNS logs
+          [monitor:///var/log/named/*.log]
+          disabled = false
+          sourcetype = named
+          index = linux-dns
+
+          [monitor:///var/log/bind/*.log]
+          disabled = false
+          sourcetype = named
+          index = linux-dns
+
+          # FTP logs
+          [monitor:///var/log/vsftpd.log]
+          disabled = false
+          sourcetype = vsftpd
+          index = linux-ftp
+
+          [monitor:///var/log/proftpd/*.log]
+          disabled = false
+          sourcetype = proftpd
+          index = linux-ftp
+        mode: '0600'
+
+    - name: Check if Splunk forwarder is already running
+      shell: "timeout 10 {{ splunk_home }}/bin/splunk status || echo 'not running'"
+      register: splunk_status_check
+      ignore_errors: yes
+      changed_when: false
+      when: splunk_binary_check.stat.exists
+
+    - name: Check if systemd unit file exists
+      stat:
+        path: /etc/systemd/system/SplunkForwarder.service
+      register: splunk_systemd_unit
+
+    - name: Start Splunk forwarder (first time)
+      shell: |
+        {{ splunk_home }}/bin/splunk start --accept-license --answer-yes --no-prompt
+      register: splunk_start_result
+      when: 
+        - splunk_binary_check.stat.exists
+        - splunk_status_check is skipped or splunk_status_check.rc != 0 or 'splunkd is not running' in splunk_status_check.stdout | default('') or 'not running' in splunk_status_check.stdout | default('')
+
+    - name: Enable boot-start (only if unit file doesn't exist)
+      shell: |
+        {{ splunk_home }}/bin/splunk enable boot-start -systemd-managed 1 --accept-license --answer-yes --no-prompt || \
+        {{ splunk_home }}/bin/splunk enable boot-start --accept-license --answer-yes --no-prompt
+      when: 
+        - splunk_binary_check.stat.exists
+        - not splunk_systemd_unit.stat.exists
+      ignore_errors: yes
+
+    - name: Ensure SplunkForwarder service is started via systemd
+      shell: |
+        systemctl daemon-reload
+        systemctl start SplunkForwarder || true
+      when: 
+        - splunk_binary_check.stat.exists
+        - splunk_systemd_unit.stat.exists
+      ignore_errors: yes
+
+    - name: Verify Splunk forwarder is running
+      shell: "timeout 10 {{ splunk_home }}/bin/splunk status"
+      register: splunk_status
+      changed_when: false
+      failed_when: "'splunkd is running' not in splunk_status.stdout"
+      when: splunk_binary_check.stat.exists
+
+    - name: Clean up temp directory
+      file:
+        path: /tmp/splunk_install
+        state: absent
+
+- name: Deploy Splunk forwarder to Windows hosts
+  hosts: windows_forwarders
+  gather_facts: yes
+  vars:
+    splunk_server: "172.20.242.20"
+    splunk_port: "9997"
+    splunk_version: "10.2.0"
+    splunk_build: "d749cb17ea65"
+    splunk_home: "C:\\Program Files\\SplunkUniversalForwarder"
+  tasks:
+    - name: Check if Splunk forwarder is installed
+      win_stat:
+        path: "{{ splunk_home }}\\bin\\splunk.exe"
+      register: splunk_installed
+
+    - name: Download Splunk UF MSI
+      win_get_url:
+        url: "https://download.splunk.com/products/universalforwarder/releases/{{ splunk_version }}/windows/splunkforwarder-{{ splunk_version }}-{{ splunk_build }}-windows-x64.msi"
+        dest: "C:\\Windows\\Temp\\splunkforwarder.msi"
+      when: not splunk_installed.stat.exists
+      register: msi_download
+
+    - name: Install Splunk UF
+      win_package:
+        path: "C:\\Windows\\Temp\\splunkforwarder.msi"
+        arguments: "AGREETOLICENSE=yes RECEIVING_INDEXER={{ splunk_server }}:{{ splunk_port }} LAUNCHSPLUNK=0 /quiet"
+        state: present
+      when: 
+        - not splunk_installed.stat.exists
+        - msi_download is succeeded
+      register: msi_install
+
+    # Verify installation succeeded
+    - name: Verify Splunk binary exists after installation
+      win_stat:
+        path: "{{ splunk_home }}\\bin\\splunk.exe"
+      register: splunk_binary_check
+
+    - name: Fail if Splunk binary not found
+      fail:
+        msg: "Splunk installation failed - binary not found at {{ splunk_home }}\\bin\\splunk.exe"
+      when: not splunk_binary_check.stat.exists
+
+    - name: Create Splunk local config directory
+      win_file:
+        path: "{{ splunk_home }}\\etc\\system\\local"
+        state: directory
+
+    - name: Configure outputs.conf
+      win_copy:
+        dest: "{{ splunk_home }}\\etc\\system\\local\\outputs.conf"
+        content: |
+          [tcpout]
+          defaultGroup = competition_splunk
+
+          [tcpout:competition_splunk]
+          server = {{ splunk_server }}:{{ splunk_port }}
+          compressed = true
+
+    - name: Configure inputs.conf for Windows
+      win_copy:
+        dest: "{{ splunk_home }}\\etc\\system\\local\\inputs.conf"
+        content: |
+          [default]
+          host = {{ ansible_hostname }}
+
+          [WinEventLog://Security]
+          disabled = false
+          index = windows-security
+          sourcetype = WinEventLog:Security
+
+          [WinEventLog://System]
+          disabled = false
+          index = windows-system
+          sourcetype = WinEventLog:System
+
+          [WinEventLog://Application]
+          disabled = false
+          index = windows-application
+          sourcetype = WinEventLog:Application
+
+          [WinEventLog://Microsoft-Windows-PowerShell/Operational]
+          disabled = false
+          index = windows-powershell
+          sourcetype = WinEventLog:PowerShell
+
+          [WinEventLog://Microsoft-Windows-Sysmon/Operational]
+          disabled = false
+          index = windows-sysmon
+          sourcetype = WinEventLog:Sysmon
+
+          [WinEventLog://DNS Server]
+          disabled = false
+          index = windows-dns
+          sourcetype = WinEventLog:DNS
+
+    - name: Enable PowerShell Script Block Logging
+      win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+        name: EnableScriptBlockLogging
+        data: 1
+        type: dword
+
+    - name: Check if SplunkForwarder service exists and is running
+      win_service:
+        name: SplunkForwarder
+      register: splunk_service_check
+      ignore_errors: yes
+
+    - name: Start Splunk forwarder service (first time)
+      win_shell: |
+        & "{{ splunk_home }}\bin\splunk.exe" start --accept-license --answer-yes --no-prompt
+      when: splunk_service_check.state is not defined or splunk_service_check.state != 'running'
+      ignore_errors: yes
+
+    - name: Set Splunk service to auto-start and ensure running
+      win_service:
+        name: SplunkForwarder
+        start_mode: auto
+        state: started
+      ignore_errors: yes
+
+    - name: Clean up installer
+      win_file:
+        path: "C:\\Windows\\Temp\\splunkforwarder.msi"
+        state: absent
+
+- name: Summary
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Display completion message
+      debug:
+        msg: |
+          =====================================================
+          SPLUNK FORWARDER DEPLOYMENT COMPLETE
+          =====================================================
+          Target server: 172.20.242.20:9997
+          Version: 10.2.0
+          
+          Splunk forwarders are now sending logs to the 
+          competition Splunk server.
+          
+          Access Splunk web interface:
+            URL: https://172.20.242.20:8000
+            (Check competition credentials)
+          =====================================================

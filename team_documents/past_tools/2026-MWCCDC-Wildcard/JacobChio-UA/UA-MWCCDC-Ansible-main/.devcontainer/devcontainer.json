@@ -1,0 +1,16 @@
+{
+ "name": "Ansible Dev Container",
+ "image": "ghcr.io/ansible/community-ansible-dev-tools:latest",
+ "customizations": {
+   "vscode": {
+     "extensions": [
+       "redhat.ansible",
+       "ms-python.python"
+     ]
+   }
+ },
+ "mounts": [
+   "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind"
+ ],
+ "remoteUser": "root"
+}

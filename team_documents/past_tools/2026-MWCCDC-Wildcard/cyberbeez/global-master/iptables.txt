@@ -1,0 +1,12 @@
+-A INPUT -f -j DROP
+-A OUTPUT -f -j DROP
+-A INPUT -p icmp -j ACCEPT
+-A OUTPUT -p icmp -j ACCEPT
+-A INPUT -p TCP --match multiport --dports 25,80,110,143,443 -j ACCEPT
+-A INPUT -p TCP --match multiport --sports 25,80,110,143,443 -j ACCEPT
+-A OUTPUT -p TCP --match multiport --dports 25,80,110,143,443 -j ACCEPT
+-A OUTPUT -p TCP --match multiport --sports 25,80,110,143,443 -j ACCEPT
+-A INPUT -p udp --match multiport --dports 53,123 -j ACCEPT
+-A INPUT -p udp --match multiport --sports 53,123 -j ACCEPT
+-A OUTPUT -p udp --match multiport --dports 53,123 -j ACCEPT
+-A OUTPUT -p udp --match multiport --sports 53,123 -j ACCEPT

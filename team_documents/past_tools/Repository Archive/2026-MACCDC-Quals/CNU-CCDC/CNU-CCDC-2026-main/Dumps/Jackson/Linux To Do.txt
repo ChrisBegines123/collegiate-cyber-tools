@@ -1,0 +1,67 @@
+Fix Errors (Don't use EditFile, just append)
+address space layout randomization enabled
+kernel pointer hidden from unprivelidged users
+fixed insecure perms on vsftpd
+squid proxy service removed
+software update source includes security updates
+vsftpd updated
+doona removed
+proxychains removed
+xprobe removed
+ftp write commands are disabled
+ftp anonymous root set correctly
+ftp user logins are configured correctly
+root user denied ftp login
+openvpn cannot run as root
+removed Pixel Dungeon
+removed themole
+removed packit
+removed pompem
+removed goldeneye
+openvpn updated
+opensmtpd updated
+rsyslog enabled
+sudo requires authentication
+group users cannot use sudo
+secure password hashing algorithm configured
+users cannot log in w/o password
+ssh protocol 1 disabled
+no empty passwords for ssh
+removed yersinia
+removed SNMP
+If you need NGINX
+	nginx server tokens disabled
+	nginx set to block xss attacks
+	inline scripts blocked by nginx
+ipv4 forwarding disabled
+stack and heap address space layout randomization enabled
+removed nmapsi4
+removed pumpa
+removed amule
+removed zangband
+icecast2 disabled
+extra dictionary based password strength checks enabled
+restrict unprivelidged access to kernel syslog
+removed fcrackzip
+if need postgreSQL
+	postgreSQL has SSL enabled
+	postgreSQL does not map any user to the postgres account
+smb1 protocol disabled
+linux kernel updated
+ignore broadcast ICMP echo requests
+IPV4 TCP SYN cookies enabled
+insecure sudo config fixed
+removed Game Conqueror
+ssh root login disabled
+removed ManaPlus
+updated libreoffice
+updated bash
+updated busybox
+updated pro FTP daemon
+removed ettercap
+removed endless sky
+ssh only allows public key authentication
+removed freeciv
+removed netcat
+removed nbtscan
+NFS disabled/removed

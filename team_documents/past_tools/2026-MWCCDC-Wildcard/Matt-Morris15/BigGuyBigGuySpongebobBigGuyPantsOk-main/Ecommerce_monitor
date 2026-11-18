@@ -1,0 +1,8 @@
+echo "== SERVICES =="; systemctl is-active apache2 mysql;
+echo "== LISTEN =="; ss -tulpn | egrep ':(80|443|3306|22)\b' || true;
+echo "== WEB =="; curl -Is http://127.0.0.1 | head -n 1;
+echo "== STORE =="; curl -Is http://172.20.242.30 | head -n 1;
+echo "== DB =="; mysql -u opencart -p'StrongPassword' -h localhost opencart -e "SELECT 1;" >/dev/null && echo DB_OK;
+echo "== DNS =="; dig +time=2 +tries=1 @172.20.240.102 google.com | grep -m1 status;
+echo "== SMTP =="; nc -w2 -z 172.20.242.40 25 && echo SMTP_OK;
+echo "== UFW =="; sudo ufw status | sed -n '1,12p';

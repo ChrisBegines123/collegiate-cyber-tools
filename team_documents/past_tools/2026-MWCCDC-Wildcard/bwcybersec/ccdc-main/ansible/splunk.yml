@@ -1,0 +1,38 @@
+---
+- name: splunk tasks
+  hosts: splunk 
+  become: true
+
+  tasks:
+    - name: set splunk hostname
+      shell: echo "splunk01.{{ domain }}" > /etc/hostname
+      args:
+        executable: /bin/bash
+
+    - name: set env
+      shell: | 
+        echo "ZDS_TYPE=splunk" >> /etc/profile
+        echo "SPLUNK_HOME=/opt/splunk" >> /etc/profile
+        echo "splunk" > /var/zds/zds_type
+      args:
+        executable: /bin/bash 
+
+    - name: refresh repos
+      package:
+        update_cache: true
+
+    - name: disable firewall
+      shell: |
+        systemctl stop --now firewalld
+        systemctl disable firewalld
+      args:
+        executable: /bin/bash
+
+    - name: fetch splunkzds
+      shell: |
+        cd {{ zds_dir }}
+        curl -o splunkzds "{{ zangoose }}"
+        chmod +x splunkzds
+      args:
+        executable: /bin/bash
+
